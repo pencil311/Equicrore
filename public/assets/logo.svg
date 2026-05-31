@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none">
+  <!-- Upward arrow body -->
+  <rect x="17" y="14" width="6" height="18" rx="3" fill="#009A51"/>
+  <!-- Arrow head -->
+  <path d="M20 6 L28 16 H22 V14 H18 V16 H12 Z" fill="#003C20"/>
+  <!-- Three arm "E" strokes -->
+  <rect x="10" y="28" width="20" height="3" rx="1.5" fill="#003C20"/>
+  <rect x="10" y="22" width="14" height="3" rx="1.5" fill="#003C20"/>
+  <rect x="10" y="16" width="8"  height="3" rx="1.5" fill="#003C20"/>
+</svg>

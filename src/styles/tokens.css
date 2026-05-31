@@ -1,0 +1,151 @@
+/* ============================================================
+   EQUICRORE — Design Tokens
+   Source of truth for all colors, type, shape, shadow, motion.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap');
+
+/* ---------- Light theme (default) ---------- */
+:root {
+  /* Brand */
+  --sage:         #E7ECE5;
+  --green:        #009A51;
+  --green-deep:   #007a40;
+  --green-bright: #12b563;
+  --green-soft:   rgba(0,154,81,0.10);
+  --forest:       #003C20;
+  --forest-soft:  rgba(0,60,32,0.06);
+
+  /* Surfaces */
+  --bg:           #eef2ec;
+  --bg-2:         #e3e9e0;
+  --paper:        #fbfdfb;
+  --paper-2:      #f4f7f3;
+
+  /* Text */
+  --ink:          #0c1a11;
+  --muted:        #5d6b61;
+  --faint:        #8c978e;
+
+  /* Borders */
+  --line:         rgba(0,60,32,0.10);
+  --line-strong:  rgba(0,60,32,0.18);
+
+  /* Semantic */
+  --gain:         #009A51;
+  --loss:         #c0492f;
+  --gold:         #b98a2e;
+
+  /* Typography */
+  --serif: 'Spectral', Georgia, serif;
+  --sans:  'Hanken Grotesk', system-ui, sans-serif;
+
+  /* Shape */
+  --r-sm: 8px;
+  --r:    14px;
+  --r-lg: 22px;
+  --r-xl: 30px;
+
+  /* Shadows (green-tinted, soft) */
+  --sh-sm: 0 1px 4px rgba(0,60,32,.06), 0 0 0 1px rgba(0,60,32,.04);
+  --sh:    0 4px 16px rgba(0,60,32,.08), 0 1px 4px rgba(0,60,32,.05);
+  --sh-lg: 0 8px 32px rgba(0,60,32,.12), 0 2px 8px rgba(0,60,32,.07);
+
+  /* Motion */
+  --ease: cubic-bezier(.22,.61,.36,1);
+
+  color-scheme: light;
+}
+
+/* ---------- Dark theme ---------- */
+:root[data-theme="dark"] {
+  --bg:           #07130d;
+  --bg-2:         #0b1c13;
+  --paper:        #0e2017;
+  --paper-2:      #122619;
+  --ink:          #eaf2ec;
+  --muted:        #7fa887;
+  --faint:        #4d6b55;
+  --line:         rgba(180,240,200,0.09);
+  --line-strong:  rgba(180,240,200,0.16);
+  --green-soft:   rgba(0,154,81,0.15);
+  --forest-soft:  rgba(0,154,81,0.07);
+  --loss:         #e0795f;
+
+  color-scheme: dark;
+}
+
+/* ---------- Motion safety ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- Global resets ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body { margin: 0; }
+
+a { color: inherit; }
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+p { margin: 0; }
+
+/* ---------- Utility classes ---------- */
+.num { font-variant-numeric: tabular-nums; }
+.up  { color: var(--gain); }
+.down { color: var(--loss); }
+
+/* ---------- Animations ---------- */
+@keyframes eqDraw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes eqPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(0,154,81,.5); }
+  70%  { box-shadow: 0 0 0 10px rgba(0,154,81,0); }
+  100% { box-shadow: 0 0 0 0 rgba(0,154,81,0); }
+}
+
+@keyframes eqFloat {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-7px); }
+}
+
+@keyframes eqFadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes eqFlashUp {
+  0%   { background: rgba(0,154,81,0.18); }
+  100% { background: transparent; }
+}
+
+@keyframes eqFlashDown {
+  0%   { background: rgba(192,73,47,0.15); }
+  100% { background: transparent; }
+}
+
+.flash-up   { animation: eqFlashUp   0.6s var(--ease); }
+.flash-down { animation: eqFlashDown 0.6s var(--ease); }
+
+/* ---------- Scrollbar styling ---------- */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 99px; }
