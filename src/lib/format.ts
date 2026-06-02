@@ -10,9 +10,9 @@
 export function inr(n: number, dec?: number): string {
   const neg = n < 0
   n = Math.abs(n)
-  let s = dec != null ? n.toFixed(dec) : Math.round(n).toString()
-  let intp = dec != null ? s.split('.')[0] : s
-  const frac = dec != null ? '.' + s.split('.')[1] : ''
+  let s = (dec != null && dec > 0) ? n.toFixed(dec) : Math.round(n).toString()
+  let intp = s.includes('.') ? s.split('.')[0] : s
+  const frac = s.includes('.') ? '.' + s.split('.')[1] : ''
   if (intp.length > 3) {
     const last3 = intp.slice(-3)
     const rest = intp.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',')
