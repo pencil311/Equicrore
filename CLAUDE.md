@@ -5,8 +5,7 @@ A personal trading & investment showcase website. Displays real-time prices acro
 Indian stocks (NSE/BSE), US stocks (NYSE/NASDAQ), and crypto. Built to demonstrate
 portfolio management skills modeled on wealthy.in but as a personal site.
 
-## Owner
-Yeshwanth S. | GitHub: pencil311
+
 
 ## Tech stack
 - **Frontend/Backend**: Next.js 14 (App Router), TypeScript
