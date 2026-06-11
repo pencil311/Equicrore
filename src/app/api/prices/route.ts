@@ -89,12 +89,12 @@ export async function GET(req: NextRequest) {
 
   // Fetch in parallel
   const [yahooData, cgData] = await Promise.all([
-    uncachedStocks.length ? fetchYahoo(uncachedStocks) : Promise.resolve({}),
-    uncachedCrypto.length ? fetchCoinGecko(uncachedCrypto.map(s => CRYPTO_IDS[s])) : Promise.resolve({}),
+    uncachedStocks.length ? fetchYahoo(uncachedStocks) : Promise.resolve({} as Record<string, any>),
+    uncachedCrypto.length ? fetchCoinGecko(uncachedCrypto.map(s => CRYPTO_IDS[s])) : Promise.resolve({} as Record<string, any>),
   ])
 
   // Update cache for stocks
-  for (const [sym, d] of Object.entries(yahooData)) {
+  for (const [sym, d] of Object.entries(yahooData) as [string, any][]) {
     // Strip .NS/.BO suffix for cache key
     const key = sym.replace(/\.(NS|BO)$/, '')
     CACHE[key] = { price: d.price, chg: d.chg, chgPct: d.chgPct, ts: now }
