@@ -8,7 +8,7 @@ export const CAPITAL = 10_000_000 // ₹1 crore starting capital
 export interface Holding {
   sym: string
   name: string
-  type: 'Equity' | 'ETF' | 'Mutual Fund' | 'Crypto'
+  type: string
   qty: number
   avg: number
   price: number
@@ -28,9 +28,10 @@ export interface WatchlistItem {
 export interface Transaction {
   type: 'BUY' | 'SELL'
   sym: string
-  qty: number
-  price: number
-  when: string
+  instrument?: string
+  profit: number
+  date: string
+  status?: string
 }
 
 export interface LeaderboardEntry {
@@ -64,11 +65,11 @@ export const watchlist: WatchlistItem[] = [
 ]
 
 export const transactions: Transaction[] = [
-  { type: 'BUY',  sym: 'INFY',       qty: 100,  price: 1485,    when: 'Today · 10:42' },
-  { type: 'SELL', sym: 'WIPRO',      qty: 120,  price: 512.3,   when: 'Today · 09:58' },
-  { type: 'BUY',  sym: 'NIFTYBEES', qty: 300,  price: 248,     when: 'Yesterday · 14:20' },
-  { type: 'BUY',  sym: 'BTC',        qty: 0.12, price: 5420000, when: 'Yesterday · 11:05' },
-  { type: 'SELL', sym: 'TATAMOTORS', qty: 60,   price: 1002,    when: '2 days ago' },
+  { type: 'BUY',  sym: 'INFY',       profit: 13700,   date: '2026-06-03' },
+  { type: 'SELL', sym: 'WIPRO',      profit: -6150,   date: '2026-06-03' },
+  { type: 'BUY',  sym: 'NIFTYBEES', profit: 20700,   date: '2026-06-02' },
+  { type: 'BUY',  sym: 'BTC',        profit: 650400,  date: '2026-06-02' },
+  { type: 'SELL', sym: 'TATAMOTORS', profit: -3780,   date: '2026-05-31' },
 ]
 
 export const leaderboard: LeaderboardEntry[] = [

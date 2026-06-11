@@ -4,7 +4,9 @@ import AreaChart from '@/components/charts/AreaChart'
 import Donut from '@/components/charts/Donut'
 import { useCountUp } from '@/hooks/useCountUp'
 import { inr, inrShort, pct } from '@/lib/format'
-import { perfData, leaderboard, type Holding, type WatchlistItem, type Transaction } from '@/lib/mockData'
+import { perfData, leaderboard, type WatchlistItem } from '@/lib/mockData'
+import { type PortfolioHolding, type TradeRecord } from '@/lib/portfolio'
+import { saveUserData } from '@/lib/userStorage'
 import { Ico } from './DashLayout'
 
 const I = {
@@ -90,7 +92,7 @@ export function PerfPanel({ portfolioValue, totalPL, totalPLpct }: PerfPanelProp
 
 /* ---- AllocationPanel ---- */
 interface AllocationPanelProps {
-  holdings: Holding[]
+  holdings: PortfolioHolding[]
   cash: number
   portfolioValue: number
 }
@@ -135,7 +137,7 @@ export function AllocationPanel({ holdings, cash, portfolioValue }: AllocationPa
 
 /* ---- HoldingsPanel ---- */
 interface HoldingsPanelProps {
-  holdings: Holding[]
+  holdings: PortfolioHolding[]
   onTrade: (asset: WatchlistItem) => void
 }
 
@@ -208,7 +210,7 @@ export function WatchlistPanel({ items, onTrade }: WatchlistPanelProps) {
                 <b className={it.flash || ''}>{inr(it.price, it.price < 1000 ? 2 : 0)}</b>
                 <span className={`chg ${up ? 'up' : 'down'}`}>{pct(it.chg)}</span>
               </div>
-              <button className="btn btn-ghost btn-mini" onClick={() => onTrade(it)}>Trade</button>
+              <button className="btn btn-ghost btn-mini" onClick={() => onTrade(it)}>Record</button>
             </div>
           )
         })}
@@ -218,7 +220,15 @@ export function WatchlistPanel({ items, onTrade }: WatchlistPanelProps) {
 }
 
 /* ---- TransactionsPanel ---- */
-export function TransactionsPanel({ txns }: { txns: Transaction[] }) {
+function fmtDate(iso: string) {
+  const today = new Date().toISOString().split('T')[0]
+  const yest  = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+  if (iso === today) return 'Today'
+  if (iso === yest)  return 'Yesterday'
+  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
+export function TransactionsPanel({ txns }: { txns: TradeRecord[] }) {
   return (
     <div className="panel">
       <div className="panel-head">
@@ -226,15 +236,22 @@ export function TransactionsPanel({ txns }: { txns: Transaction[] }) {
         <a className="muted" style={{ fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>View all</a>
       </div>
       <div className="list">
-        {txns.slice(0, 5).map((t, i) => (
+        {txns.slice(0, 8).map((t, i) => (
           <div className="lrow tx-row" key={i}>
-            <span className={`txtype ${t.type === 'BUY' ? 'buy' : 'sell'}`}>{t.type}</span>
+            <span className={`txtype ${t.type === 'BUY' ? 'buy' : 'sell'}`}>{t.type === 'BUY' ? 'CALL' : 'PUT'}</span>
             <div>
-              <b style={{ fontSize: '13.5px', color: 'var(--ink)' }}>{t.sym}</b>
-              <div className="muted">{t.when}</div>
+              <b style={{ fontSize: '13.5px', color: 'var(--ink)' }}>{t.instrument || t.sym}</b>
+              <div className="muted">{fmtDate(t.date)}{t.status ? ` · ${t.status}` : ''}</div>
             </div>
-            <div className="col-r muted">{t.qty} @ {inr(t.price, t.price < 1000 ? 2 : 0)}</div>
-            <div className="col-r" style={{ fontWeight: 600, color: 'var(--ink)' }}>{inrShort(t.qty * t.price)}</div>
+            <div className="col-r">
+              {t.profit === 0 ? (
+                <span style={{ color: 'var(--muted)', fontWeight: 600 }}>₹0</span>
+              ) : (
+                <span style={{ fontWeight: 700, color: t.profit > 0 ? 'var(--gain)' : 'var(--loss)' }}>
+                  {t.profit > 0 ? '+' : '−'}{inr(Math.abs(t.profit))}
+                </span>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -282,47 +299,68 @@ export function PerformanceSummaryPanel() {
   )
 }
 
-/* ---- TradeModal ---- */
-interface TradeModalProps {
+/* ---- RecordModal ---- */
+interface RecordModalProps {
   open: boolean
-  asset: WatchlistItem | null
-  assets: WatchlistItem[]
-  cash: number
-  holdings: Holding[]
+  sym: string
+  name: string
+  color: string
   onClose: () => void
-  onSubmit: (trade: { side: string; sym: string; qty: number; price: number; meta: WatchlistItem }) => void
+  onSubmit: (record: TradeRecord) => void
 }
 
-export function TradeModal({ open, asset, assets, cash, holdings, onClose, onSubmit }: TradeModalProps) {
-  const [side, setSide] = useState('buy')
-  const [symIdx, setSymIdx] = useState(0)
-  const [qty, setQty] = useState(10)
-  const [done, setDone] = useState(false)
+export function RecordModal({ open, sym, name, color, onClose, onSubmit }: RecordModalProps) {
+  const [date, setDate]             = useState('')
+  const [type, setType]             = useState<'BUY' | 'SELL'>('BUY')
+  const [quantity, setQuantity]     = useState('')
+  const [price, setPrice]           = useState('')
+  const [profit, setProfit]         = useState('')
+  const [instrument, setInstrument] = useState('')
+  const [category, setCategory]     = useState('Equities')
+  const [status, setStatus]         = useState('')
+  const [done, setDone]             = useState(false)
 
   useEffect(() => {
     if (open) {
-      setDone(false); setSide('buy')
-      setQty(asset?.type === 'Crypto' ? 1 : 10)
-      const i = assets.findIndex(a => a.sym === asset?.sym)
-      setSymIdx(i >= 0 ? i : 0)
+      setDate(new Date().toISOString().split('T')[0])
+      setType('BUY')
+      setQuantity('')
+      setPrice('')
+      setProfit('')
+      setInstrument(sym)
+      setCategory('Equities')
+      setStatus('')
+      setDone(false)
     }
-  }, [open, asset])
+  }, [open, sym])
 
   if (!open) return null
-  const sel = assets[symIdx] || assets[0]
-  const price = sel.price
-  const held = holdings.find(h => h.sym === sel.sym)
-  const heldQty = held ? held.qty : 0
-  const orderVal = price * qty
-  const insuffCash = side === 'buy' && orderVal > cash
-  const insuffQty = side === 'sell' && qty > heldQty
-  const blocked = qty <= 0 || insuffCash || insuffQty
+
+  const profitNum  = parseFloat(profit) || 0
+  const profitUp   = profitNum > 0
+  const profitDown = profitNum < 0
+
+  const qtyNum   = parseFloat(quantity) || 0
+  const priceNum = parseFloat(price)    || 0
+  const costHint = qtyNum > 0 && priceNum > 0 ? qtyNum * priceNum : 0
 
   function submit() {
-    if (blocked) return
+    const record: TradeRecord = {
+      sym, instrument, category, type,
+      quantity: qtyNum, price: priceNum,
+      profit: profitNum, date, status,
+    }
+    try {
+      const existing: TradeRecord[] = JSON.parse(localStorage.getItem('eq-records') || '[]')
+      existing.unshift(record)
+      localStorage.setItem('eq-records', JSON.stringify(existing))
+      saveUserData('records', existing).catch(() => {})
+      window.dispatchEvent(new CustomEvent('eq-record-added'))
+      window.dispatchEvent(new Event('storage'))
+    } catch {}
     setDone(true)
-    onSubmit({ side, sym: sel.sym, qty, price, meta: sel })
-    setTimeout(onClose, 1300)
+    onSubmit(record)
+    setTimeout(onClose, 1500)
   }
 
   return (
@@ -332,58 +370,171 @@ export function TradeModal({ open, asset, assets, cash, holdings, onClose, onSub
           <div className="modal-body">
             <div className="confirm-ok">
               <div className="ok"><Ico d={I.check} s={34} /></div>
-              <h3 style={{ fontFamily: 'var(--serif)', fontSize: 22, fontWeight: 500, margin: '0 0 6px' }}>Order filled</h3>
-              <p className="muted">{side === 'buy' ? 'Bought ' : 'Sold '}{qty} {sel.sym} @ {inr(price, price < 1000 ? 2 : 0)}</p>
+              <h3 style={{ fontFamily: 'var(--serif)', fontSize: 22, fontWeight: 500, margin: '0 0 6px' }}>Recorded!</h3>
             </div>
           </div>
         ) : (
           <>
             <div className="modal-head">
-              <span className="tk" style={{ background: sel.color, width: 42, height: 42, borderRadius: 11 }}>{sel.sym.slice(0, 2)}</span>
+              <span className="tk" style={{ background: color, width: 42, height: 42, borderRadius: 11 }}>{sym.slice(0, 2)}</span>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>{sel.sym}</div>
-                <div className="muted">{sel.name} · {inr(price, price < 1000 ? 2 : 0)}</div>
+                <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>{sym}</div>
+                <div className="muted">{name}</div>
               </div>
               <button className="tb-icon" style={{ marginLeft: 'auto' }} onClick={onClose}>
                 <Ico d="M6 6l12 12M18 6 6 18" s={16} />
               </button>
             </div>
             <div className="modal-body">
-              <div className="pick">
-                {assets.slice(0, 8).map((a, i) => (
-                  <div key={a.sym} className={`chip2${i === symIdx ? ' on' : ''}`} onClick={() => setSymIdx(i)}>
-                    <span className="tk" style={{ background: a.color, width: 22, height: 22, borderRadius: 6, fontSize: 10 }}>{a.sym.slice(0, 2)}</span>
-                    {a.sym}
-                  </div>
-                ))}
-              </div>
-              <div className="seg">
-                <button className={`buy${side === 'buy' ? ' on' : ''}`} onClick={() => setSide('buy')}>Buy</button>
-                <button className={`sell${side === 'sell' ? ' on' : ''}`} onClick={() => setSide('sell')}>Sell</button>
-              </div>
+              {/* Instrument */}
               <div className="field">
-                <label>Quantity{sel.type === 'Crypto' ? ' (units)' : ' (shares)'}</label>
-                <div className="qty">
-                  <button onClick={() => setQty(q => Math.max(0, +(q - (sel.type === 'Crypto' ? 0.1 : 1)).toFixed(2)))}>−</button>
-                  <input type="number" value={qty} onChange={e => setQty(Math.max(0, +e.target.value || 0))} />
-                  <button onClick={() => setQty(q => +(q + (sel.type === 'Crypto' ? 0.1 : 1)).toFixed(2))}>+</button>
+                <label>Instrument</label>
+                <input
+                  type="text"
+                  value={instrument}
+                  placeholder="e.g. HDFCBANK, NIFTY, BTC..."
+                  onChange={e => setInstrument(e.target.value)}
+                  style={{
+                    width: '100%', border: '1.5px solid var(--line)', borderRadius: 'var(--r-sm)',
+                    padding: '10px 12px', fontSize: 14, fontFamily: 'var(--sans)',
+                    color: 'var(--ink)', background: 'var(--paper)', outline: 'none',
+                    boxSizing: 'border-box' as const,
+                  }}
+                />
+              </div>
+
+              {/* Category */}
+              <div className="field">
+                <label>Category</label>
+                <select
+                  value={category}
+                  onChange={e => setCategory(e.target.value)}
+                  style={{
+                    width: '100%', border: '1.5px solid var(--line)', borderRadius: 'var(--r-sm)',
+                    padding: '10px 12px', fontSize: 14, fontFamily: 'var(--sans)',
+                    color: 'var(--ink)', background: 'var(--paper)', outline: 'none',
+                    boxSizing: 'border-box' as const, cursor: 'pointer',
+                    appearance: 'none' as const,
+                  }}
+                >
+                  {['Equities', 'FNO', 'Commodities', 'Crypto', 'Forex'].map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date */}
+              <div className="field">
+                <label>Date</label>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={e => setDate(e.target.value)}
+                  style={{
+                    width: '100%', border: '1.5px solid var(--line)', borderRadius: 'var(--r-sm)',
+                    padding: '10px 12px', fontSize: 14, fontFamily: 'var(--sans)',
+                    color: 'var(--ink)', background: 'var(--paper)', outline: 'none',
+                    boxSizing: 'border-box' as const,
+                  }}
+                />
+              </div>
+
+              {/* Type toggle */}
+              <div className="field">
+                <label>Transaction type</label>
+                <div className="seg">
+                  <button className={`buy${type === 'BUY' ? ' on' : ''}`} onClick={() => setType('BUY')}>Call</button>
+                  <button className={`sell${type === 'SELL' ? ' on' : ''}`} onClick={() => setType('SELL')}>Put</button>
                 </div>
               </div>
-              {side === 'sell' && <div className="muted" style={{ fontSize: 12.5 }}>You hold {heldQty} {sel.sym}</div>}
-              <div className="order-sum">
-                <div className="r">Price <b>{inr(price, price < 1000 ? 2 : 0)}</b></div>
-                <div className="r">Quantity <b>{qty}</b></div>
-                <div className="r">Brokerage <b style={{ color: 'var(--green-deep)' }}>₹0 · paper</b></div>
-                <div className="r total">{side === 'buy' ? 'Order value' : 'You receive'} <b className="num">{inr(orderVal)}</b></div>
+
+              {/* Quantity + Price — side by side */}
+              <div className="field">
+                <label>Quantity &amp; Price per unit (₹)</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="number"
+                    value={quantity}
+                    placeholder="Qty"
+                    min="0"
+                    onChange={e => setQuantity(e.target.value)}
+                    style={{
+                      flex: 1, border: '1.5px solid var(--line)', borderRadius: 'var(--r-sm)',
+                      padding: '10px 12px', fontSize: 14, fontFamily: 'var(--sans)',
+                      color: 'var(--ink)', background: 'var(--paper)', outline: 'none',
+                      boxSizing: 'border-box' as const,
+                    }}
+                  />
+                  <input
+                    type="number"
+                    value={price}
+                    placeholder="Price ₹"
+                    min="0"
+                    onChange={e => setPrice(e.target.value)}
+                    style={{
+                      flex: 2, border: '1.5px solid var(--line)', borderRadius: 'var(--r-sm)',
+                      padding: '10px 12px', fontSize: 14, fontFamily: 'var(--sans)',
+                      color: 'var(--ink)', background: 'var(--paper)', outline: 'none',
+                      boxSizing: 'border-box' as const,
+                    }}
+                  />
+                </div>
+                {costHint > 0 && (
+                  <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--faint)' }}>
+                    {type === 'BUY' ? 'Cost' : 'Proceeds'}: <b style={{ color: 'var(--ink)' }}>{inr(costHint)}</b>
+                  </div>
+                )}
               </div>
-              {insuffCash && <div className="warn">Not enough buying power — you have {inr(cash)}.</div>}
-              {insuffQty && <div className="warn">You only hold {heldQty} {sel.sym}.</div>}
+
+              {/* Profit / Loss */}
+              <div className="field">
+                <label>Profit / Loss (₹)</label>
+                <div style={{ fontSize: 12, color: 'var(--faint)', marginBottom: 8, marginTop: -4 }}>
+                  Enter positive for profit, negative for loss (e.g. −500)
+                </div>
+                <input
+                  type="number"
+                  value={profit}
+                  placeholder="0"
+                  onChange={e => setProfit(e.target.value)}
+                  style={{
+                    width: '100%', border: '1.5px solid var(--line)', borderRadius: 'var(--r-sm)',
+                    padding: '10px 12px', fontSize: 16, fontFamily: 'var(--serif)',
+                    fontWeight: 600, outline: 'none', boxSizing: 'border-box' as const,
+                    background: 'var(--paper)',
+                    color: profitUp ? 'var(--gain)' : profitDown ? 'var(--loss)' : 'var(--ink)',
+                  }}
+                />
+                {(profitUp || profitDown) && (
+                  <div style={{ marginTop: 7, fontSize: 14, fontWeight: 700, color: profitUp ? 'var(--gain)' : 'var(--loss)' }}>
+                    {profitUp ? '+' : '−'}{inr(Math.abs(profitNum))}
+                  </div>
+                )}
+              </div>
+
+              {/* Status / Notes */}
+              <div className="field">
+                <label>Status / Notes</label>
+                <textarea
+                  value={status}
+                  rows={2}
+                  placeholder="e.g. Booked profit, Stop loss hit, Holding..."
+                  onChange={e => setStatus(e.target.value)}
+                  style={{
+                    width: '100%', border: '1.5px solid var(--line)', borderRadius: 'var(--r-sm)',
+                    padding: '10px 12px', fontSize: 14, fontFamily: 'var(--sans)',
+                    color: 'var(--ink)', background: 'var(--paper)', outline: 'none',
+                    resize: 'none', boxSizing: 'border-box' as const,
+                  }}
+                />
+              </div>
+
               <button
-                className={`btn ${side === 'buy' ? 'btn-solid' : 'btn-ghost'}`}
-                style={{ width: '100%', justifyContent: 'center', padding: 14, ...(side === 'sell' ? { background: 'var(--loss)', color: '#fff', border: 'none' } : {}), ...(blocked ? { opacity: 0.5, pointerEvents: 'none' as const } : {}) }}
+                className="btn btn-solid"
+                style={{ width: '100%', justifyContent: 'center', padding: 14 }}
                 onClick={submit}
               >
-                {side === 'buy' ? 'Buy ' : 'Sell '}{sel.sym}
+                Record
               </button>
             </div>
           </>

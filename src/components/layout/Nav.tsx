@@ -1,12 +1,14 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useTheme } from '@/hooks/useTheme'
 
 export default function Nav() {
   const [scrolled, setScrolled] = useState(false)
-  const { theme, toggleTheme } = useTheme()
+  const { theme, toggleTheme }  = useTheme()
+  const { data: session }       = useSession()
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20)
@@ -39,8 +41,23 @@ export default function Nav() {
               </svg>
             )}
           </button>
-          <Link href="/dashboard" className="btn btn-ghost">Log in</Link>
-          <Link href="/dashboard" className="btn btn-solid">Open dashboard</Link>
+          {session ? (
+            <>
+              <div style={{
+                width: 32, height: 32, borderRadius: '50%', background: 'var(--forest)',
+                display: 'grid', placeItems: 'center',
+                color: '#eafff2', fontWeight: 700, fontSize: 13, flexShrink: 0,
+              }}>
+                {session.user?.name?.charAt(0)?.toUpperCase() ?? 'Y'}
+              </div>
+              <Link href="/dashboard" className="btn btn-solid">Open dashboard</Link>
+            </>
+          ) : (
+            <>
+              <Link href="/login" className="btn btn-ghost">Log in</Link>
+              <Link href="/login" className="btn btn-solid">Open dashboard</Link>
+            </>
+          )}
         </div>
       </div>
     </nav>

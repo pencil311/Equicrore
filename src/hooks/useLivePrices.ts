@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { WatchlistItem, Holding } from '@/lib/mockData'
+import type { WatchlistItem } from '@/lib/mockData'
 
 // Map our symbols to Yahoo Finance format
 const YAHOO_MAP: Record<string, string> = {
@@ -82,8 +82,11 @@ export function mergeWatchlist(items: WatchlistItem[], prices: Record<string, Li
   })
 }
 
-/** Merge live prices into holdings */
-export function mergeHoldings(items: Holding[], prices: Record<string, LivePrice>): Holding[] {
+/** Merge live prices into holdings (generic so it works with any holding shape) */
+export function mergeHoldings<T extends { sym: string; price: number }>(
+  items: T[],
+  prices: Record<string, LivePrice>,
+): T[] {
   return items.map(item => {
     const p = prices[item.sym]
     if (!p || p.price === 0) return item

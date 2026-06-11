@@ -18,7 +18,8 @@
     "lucide-react": "^0.383.0",
     "clsx": "^2.1.1",
     "axios": "^1.7.2",
-    "bcryptjs": "^2.4.3"
+    "bcryptjs": "^2.4.3",
+    "lightweight-charts": "^4.2.0"
   },
   "devDependencies": {
     "@types/node": "^20",

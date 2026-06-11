@@ -1,9 +1,8 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import '@/styles/markets.css'
-import '@/styles/dashboard.css'
-import Nav from '@/components/layout/Nav'
-import { watchCategories, allSymbols, toTVUrl, type WatchSymbol, type WatchCategory } from '@/lib/watchlists'
+import { watchCategories, allSymbols, toTVUrl, type WatchSymbol } from '@/lib/watchlists'
+import { RecordModal } from '@/components/dashboard/DashPanels'
 import { useTheme } from '@/hooks/useTheme'
 
 function Ico({ d, s = 18 }: { d: string; s?: number }) {
@@ -18,11 +17,8 @@ const ICONS = {
   search: 'M21 21l-4.3-4.3M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16z',
   x:      'M6 6l12 12M18 6 6 18',
   ext:    'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3',
-  tv:     'M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z',
-  star:   'M12 3l2.6 5.6L21 9.3l-4.5 4.2 1.1 6.1L12 16.8 6.4 19.6l1.1-6.1L3 9.3l6.4-.7z',
 }
 
-// Color per category id
 const CAT_COLORS: Record<string, string> = {
   indices:     '#7a3ec2',
   indian:      '#009A51',
@@ -31,7 +27,20 @@ const CAT_COLORS: Record<string, string> = {
   commodities: '#b98a2e',
 }
 
-// Highlight matching text
+const WL_KEY = 'eq-watchlist'
+
+function loadWatchlist(): Set<string> {
+  if (typeof window === 'undefined') return new Set()
+  try {
+    const raw = localStorage.getItem(WL_KEY)
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set()
+  } catch { return new Set() }
+}
+
+function saveWatchlist(wl: Set<string>) {
+  localStorage.setItem(WL_KEY, JSON.stringify(Array.from(wl)))
+}
+
 function Highlight({ text, query }: { text: string; query: string }) {
   if (!query) return <>{text}</>
   const idx = text.toLowerCase().indexOf(query.toLowerCase())
@@ -46,20 +55,33 @@ function Highlight({ text, query }: { text: string; query: string }) {
 }
 
 export default function MarketsPage() {
-  const [activeTab, setActiveTab]   = useState('indian')
-  const [subFilter, setSubFilter]   = useState('All')
-  const [query, setQuery]           = useState('')
+  const [activeTab, setActiveTab] = useState('indian')
+  const [subFilter, setSubFilter] = useState('All')
+  const [query, setQuery]         = useState('')
+  const [watchlist, setWatchlist] = useState<Set<string>>(new Set())
+  const [tradeModal, setTradeModal] = useState<{ open: boolean; sym: string; name: string; color: string }>({ open: false, sym: '', name: '', color: '' })
   const { theme } = useTheme()
+
+  useEffect(() => {
+    setWatchlist(loadWatchlist())
+  }, [])
+
+  function toggleWatchlist(sym: string) {
+    setWatchlist(prev => {
+      const next = new Set(prev)
+      next.has(sym) ? next.delete(sym) : next.add(sym)
+      saveWatchlist(next)
+      return next
+    })
+  }
 
   const activeCat = watchCategories.find(c => c.id === activeTab)!
 
-  // Sub-categories for current tab
   const subCats = useMemo(() => {
     const cats = Array.from(new Set(activeCat.symbols.map(s => s.category)))
     return ['All', ...cats]
   }, [activeTab])
 
-  // Filtered symbols
   const filtered = useMemo(() => {
     let list = activeCat.symbols
     if (subFilter !== 'All') list = list.filter(s => s.category === subFilter)
@@ -74,7 +96,6 @@ export default function MarketsPage() {
     return list
   }, [activeTab, subFilter, query])
 
-  // Search across all categories
   const globalSearch = useMemo(() => {
     if (!query.trim()) return []
     const q = query.toLowerCase()
@@ -84,20 +105,18 @@ export default function MarketsPage() {
     ).slice(0, 40)
   }, [query])
 
+  function openTrade(sym: string, name: string, color: string) {
+    setTradeModal({ open: true, sym, name, color })
+  }
+
   const isSearching = query.trim().length > 0
 
   return (
     <div className="mkts-wrap">
-      <Nav />
-
       {/* Hero */}
-      <div className="mkts-hero" style={{ paddingTop: 110, paddingBottom: 48 }}>
+      <div className="mkts-hero" style={{ paddingTop: 24, paddingBottom: 48 }}>
         <div className="wrap">
           <h1 style={{ marginBottom: 12 }}>Markets</h1>
-          <p style={{ marginBottom: 24 }}>
-            Browse your curated watchlists across Indian stocks, crypto, forex, commodities and global indices. Click any symbol to open the full chart on TradingView.
-          </p>
-          {/* Search */}
           <div className="mkt-search" style={{ maxWidth: 560 }}>
             <Ico d={ICONS.search} s={18} />
             <input
@@ -114,7 +133,6 @@ export default function MarketsPage() {
           </div>
         </div>
       </div>
-
 
       {/* Global search results */}
       {isSearching ? (
@@ -136,10 +154,17 @@ export default function MarketsPage() {
                 <span>Category</span>
                 <span style={{ textAlign:'right' }}>Actions</span>
               </div>
-              {globalSearch.map((s, i) => {
+              {globalSearch.map(s => {
                 const cat = watchCategories.find(c => c.symbols.some(x => x.sym === s.sym))
                 return (
-                  <SymbolRow key={i} sym={s} catColor={cat ? CAT_COLORS[cat.id] : '#888'} catLabel={cat?.label || ''} query={query} />
+                  <SymbolRow key={s.sym} sym={s}
+                    catColor={cat ? CAT_COLORS[cat.id] : '#888'}
+                    catLabel={cat?.label || ''}
+                    catId={cat?.id || ''}
+                    query={query}
+                    watchlist={watchlist} onToggle={toggleWatchlist}
+                    onTrade={openTrade}
+                  />
                 )
               })}
             </div>
@@ -161,34 +186,71 @@ export default function MarketsPage() {
           {/* Symbols table */}
           <div className="mkt-content">
             <div className="inst-table">
-              <div className="inst-head" style={{ display:'grid', gridTemplateColumns:'1fr 2fr 1fr 120px', gap:12, padding:'12px 20px' }}>
+              <div className="inst-head" style={{ display:'grid', gridTemplateColumns:'1fr 2fr 1fr 52px 190px', gap:12, padding:'12px 20px' }}>
                 <span>Symbol</span>
                 <span>Name</span>
                 <span>Category</span>
-                <span style={{ textAlign:'right' }}>Action</span>
+                <span></span>
+                <span style={{ textAlign:'right' }}>Actions</span>
               </div>
-              {filtered.map((s, i) => (
-                <SymbolRow key={i} sym={s} catColor={CAT_COLORS[activeTab]} catLabel={activeCat.label} query={''} />
+              {filtered.map(s => (
+                <SymbolRow key={s.sym} sym={s}
+                  catColor={CAT_COLORS[activeTab]}
+                  catLabel={activeCat.label}
+                  catId={activeTab}
+                  query={''}
+                  watchlist={watchlist} onToggle={toggleWatchlist}
+                  onTrade={openTrade}
+                />
               ))}
             </div>
           </div>
         </>
       )}
+
+      <RecordModal
+        open={tradeModal.open}
+        sym={tradeModal.sym}
+        name={tradeModal.name}
+        color={tradeModal.color}
+        onClose={() => setTradeModal({ open: false, sym: '', name: '', color: '' })}
+        onSubmit={() => setTradeModal({ open: false, sym: '', name: '', color: '' })}
+      />
     </div>
   )
 }
 
-function SymbolRow({ sym, catColor, catLabel, query }: { sym: WatchSymbol; catColor: string; catLabel: string; query: string }) {
-  const short = sym.sym.includes(':') ? sym.sym.split(':')[1] : sym.sym
-  const tvUrl = toTVUrl(sym.sym)
+function SymbolRow({
+  sym, catColor, catLabel, catId, query, watchlist, onToggle, onTrade,
+}: {
+  sym: WatchSymbol; catColor: string; catLabel: string; catId: string; query: string
+  watchlist: Set<string>; onToggle: (sym: string) => void
+  onTrade: (sym: string, name: string, color: string) => void
+}) {
+  const short  = sym.sym.includes(':') ? sym.sym.split(':')[1] : sym.sym
+  const tvUrl  = toTVUrl(sym.sym)
+  const inWl   = watchlist.has(sym.sym)
+  const [bumped, setBumped] = useState(false)
+
+  function handleStar(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    onToggle(sym.sym)
+    setBumped(true)
+    setTimeout(() => setBumped(false), 200)
+  }
+
+  function handleTrade(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    onTrade(short, sym.name, catColor)
+  }
 
   return (
-    <a
-      href={tvUrl}
-      target="_blank"
-      rel="noreferrer"
+    <div
       className="inst-row"
-      style={{ display:'grid', gridTemplateColumns:'1fr 2fr 1fr 120px', gap:12, alignItems:'center', padding:'13px 20px', textDecoration:'none', cursor:'pointer' }}
+      style={{ display:'grid', gridTemplateColumns:'1fr 2fr 1fr 52px 190px', gap:12, alignItems:'center', padding:'13px 20px', cursor:'pointer' }}
+      onClick={() => window.open(tvUrl, '_blank', 'noreferrer')}
     >
       <div className="inst-asset">
         <span className="inst-tk" style={{ background: catColor }}>{short.slice(0,2)}</span>
@@ -204,12 +266,29 @@ function SymbolRow({ sym, catColor, catLabel, query }: { sym: WatchSymbol; catCo
           {sym.category}
         </span>
       </div>
-      <div style={{ textAlign:'right' }}>
-        <span className="btn-xs solid" style={{ display:'inline-flex', alignItems:'center', gap:5 }}>
-          <Ico d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3" s={12} />
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center' }}>
+        <button
+          onClick={handleStar}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px',
+            fontSize: 20, lineHeight: 1,
+            color: inWl ? '#f5a623' : 'var(--faint)',
+            transform: bumped ? 'scale(1.4)' : 'scale(1)',
+            transition: 'transform 0.15s, color 0.15s',
+          }}
+        >
+          {inWl ? '★' : '☆'}
+        </button>
+      </div>
+      <div style={{ textAlign:'right', display:'flex', alignItems:'center', justifyContent:'flex-end', gap:6 }}>
+        <button className="btn-xs solid" onClick={handleTrade}>
+          Record
+        </button>
+        <span className="btn-xs" style={{ display:'inline-flex', alignItems:'center', gap:5 }}>
+          <Ico d={ICONS.ext} s={12} />
           Chart
         </span>
       </div>
-    </a>
+    </div>
   )
 }

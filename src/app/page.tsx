@@ -1,5 +1,6 @@
 'use client'
 import { useEffect } from 'react'
+import { useSession } from 'next-auth/react'
 import Nav from '@/components/layout/Nav'
 import HeroSparkline from '@/components/ui/HeroSparkline'
 import FeatChart from '@/components/ui/FeatChart'
@@ -26,6 +27,9 @@ const steps = [
 ]
 
 export default function HomePage() {
+  const { data: session } = useSession()
+  const dashHref = session ? '/dashboard' : '/login'
+
   useEffect(() => {
     const io = new IntersectionObserver(
       entries => entries.forEach(e => e.isIntersecting && e.target.classList.add('visible')),
@@ -301,7 +305,9 @@ export default function HomePage() {
                 built for investors who want clarity without complexity.
               </p>
               <div className="hero-actions">
-                <a href="/dashboard" className="btn btn-solid">Open Dashboard</a>
+                <a href={dashHref} className="btn btn-solid">
+                  {session ? 'Open Dashboard' : 'Sign in →'}
+                </a>
                 <a href="#markets" className="btn btn-ghost">Explore Markets</a>
               </div>
             </div>
@@ -513,7 +519,9 @@ export default function HomePage() {
             where your money is.
           </p>
           <div className="cta-actions">
-            <a href="/dashboard" className="btn btn-white">Open Dashboard</a>
+            <a href={dashHref} className="btn btn-white">
+                  {session ? 'Open Dashboard' : 'Sign in'}
+                </a>
             <a href="#markets" className="btn btn-outline-white">Explore Markets</a>
           </div>
         </div>
@@ -546,16 +554,9 @@ export default function HomePage() {
                 <a href="#markets">Crypto</a>
               </div>
             </div>
-            <div>
-              <div className="footer-col-title">About</div>
-              <div className="footer-links">
-                <a href="https://github.com/pencil311" target="_blank" rel="noopener noreferrer">GitHub</a>
-                <a href="#about">About Yeshwanth</a>
-              </div>
-            </div>
           </div>
           <div className="footer-bottom">
-            <div className="footer-copy">© 2025 Equicrore · Yeshwanth S.</div>
+            <div className="footer-copy">© 2025 Equicrore</div>
             <div className="footer-legal">
               <a href="#">Privacy</a>
               <a href="#">Terms</a>

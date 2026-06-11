@@ -9,7 +9,7 @@
 .content.fade { animation: eqFadeUp .35s var(--ease); }
 
 /* sidebar */
-.side { width: 242px; flex-shrink: 0; background: var(--paper); border-right: 1px solid var(--line); display: flex; flex-direction: column; overflow-y: auto; }
+.side { width: 242px; min-width: 242px; height: 100vh; flex-shrink: 0; background: var(--paper); border-right: 1px solid var(--line); display: flex; flex-direction: column; overflow-y: auto; transition: width 0.3s cubic-bezier(.22,.61,.36,1), opacity 0.2s; }
 .side-top { padding: 22px 20px 16px; border-bottom: 1px solid var(--line); }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .brand img { height: 26px; }
@@ -134,7 +134,7 @@
 .chg { font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* transaction row */
-.tx-row { grid-template-columns: 56px 1fr 140px 100px; }
+.tx-row { grid-template-columns: 56px 1fr 130px; }
 .txtype { font-size: 11.5px; font-weight: 800; letter-spacing: .06em; padding: 4px 9px; border-radius: 6px; text-align: center; }
 .txtype.buy { background: var(--green-soft); color: var(--gain); }
 .txtype.sell { background: rgba(192,73,47,.1); color: var(--loss); }
@@ -175,9 +175,6 @@
 .modal { background: var(--paper); border-radius: var(--r-xl); width: 420px; max-height: 90vh; overflow-y: auto; box-shadow: var(--sh-lg); animation: eqFadeUp .3s var(--ease); }
 .modal-head { display: flex; align-items: center; gap: 14px; padding: 22px 22px 16px; border-bottom: 1px solid var(--line); }
 .modal-body { padding: 20px 22px 26px; display: flex; flex-direction: column; gap: 16px; }
-.pick { display: flex; gap: 8px; flex-wrap: wrap; }
-.chip2 { display: flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 999px; border: 1.5px solid var(--line); font-size: 13px; font-weight: 600; cursor: pointer; transition: all .18s; color: var(--muted); }
-.chip2.on { border-color: var(--green); color: var(--green-deep); background: var(--green-soft); }
 .seg { display: flex; background: var(--bg); border-radius: 999px; padding: 3px; }
 .seg button { flex: 1; font-family: var(--sans); font-size: 13.5px; font-weight: 600; border: none; background: transparent; border-radius: 999px; padding: 8px; cursor: pointer; color: var(--muted); transition: all .18s; }
 .seg button.buy.on { background: var(--green); color: #fff; }
@@ -187,13 +184,12 @@
 .qty button { width: 42px; height: 42px; border: none; background: var(--bg); color: var(--ink); font-size: 18px; cursor: pointer; transition: background .18s; flex-shrink: 0; }
 .qty button:hover { background: var(--bg-2); }
 .qty input { flex: 1; border: none; background: transparent; text-align: center; font-family: var(--sans); font-size: 17px; font-weight: 700; color: var(--ink); outline: none; padding: 0 8px; height: 42px; }
-.order-sum { background: var(--bg); border-radius: var(--r-sm); padding: 14px 16px; display: flex; flex-direction: column; gap: 9px; }
-.order-sum .r { display: flex; justify-content: space-between; font-size: 13.5px; color: var(--muted); }
-.order-sum .r b { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
-.order-sum .total { padding-top: 9px; border-top: 1px solid var(--line); font-weight: 600; color: var(--ink); font-size: 14px; }
-.warn { background: rgba(192,73,47,.1); color: var(--loss); font-size: 13px; font-weight: 600; padding: 10px 14px; border-radius: var(--r-sm); }
 .confirm-ok { text-align: center; padding: 30px 20px; }
 .ok { width: 64px; height: 64px; border-radius: 999px; background: var(--green-soft); color: var(--gain); display: grid; place-items: center; margin: 0 auto 18px; }
+
+/* profile footer popup menu */
+.prof-menu-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: none; background: none; border-radius: 6px; cursor: pointer; font-size: 13.5px; color: var(--ink); text-align: left; transition: background 0.15s; font-family: var(--sans); }
+.prof-menu-btn:hover { background: var(--bg-2); }
 
 /* flash animations for ticking prices */
 .flash-up { animation: eqFlashUp .6s var(--ease); }
@@ -207,9 +203,7 @@
   .hold-row .col-r:last-child { display: none; }
 }
 @media(max-width:768px) {
-  .side { display: none; }
   .content { padding: 16px; }
   .stats { grid-template-columns: 1fr 1fr; }
   .tx-row { grid-template-columns: 56px 1fr 100px; }
-  .tx-row .col-r:last-child { display: none; }
 }
