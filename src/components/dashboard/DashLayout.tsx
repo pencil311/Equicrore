@@ -17,7 +17,7 @@ const I = {
   moon:   'M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z',
   sun:    'M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4',
   plus:   'M12 5v14M5 12h14',
-  bell:   'M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0',
+
   wallet: 'M19 7H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2zM16 13h.01M3 9V7a2 2 0 0 1 2-2h11',
   logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
   users:  'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75M9 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
@@ -224,10 +224,6 @@ export function TopBar({ onTrade, theme, toggleTheme }: TopBarProps) {
       </div>
       <button className="tb-icon" title="Toggle theme" onClick={toggleTheme}>
         <Ico d={theme === 'dark' ? I.sun : I.moon} s={17} />
-      </button>
-      <button className="tb-icon">
-        <Ico d={I.bell} s={18} />
-        <span className="badge">3</span>
       </button>
       <button className="btn btn-solid btn-mini" onClick={onTrade}>
         <Ico d={I.plus} s={16} />
