@@ -4,7 +4,7 @@ import { Ico } from '@/components/dashboard/DashLayout'
 import { StatCard, PerfPanel, AllocationPanel, HoldingsPanel, TransactionsPanel, PerformanceSummaryPanel } from '@/components/dashboard/DashPanels'
 import { useDash } from '@/lib/dashContext'
 import { pct, inr } from '@/lib/format'
-import { BROKERS, type BrokerId } from '@/lib/brokers'
+import { BROKERS, type Broker, type BrokerId } from '@/lib/brokers'
 
 const I = {
   bag:    'M6 7V6a4 4 0 0 1 8 0v1M4 7h16l-1 13H5z',
@@ -18,6 +18,33 @@ const I = {
 
 function readLSSnapshot<T>(key: string, fb: T): T {
   try { const r = localStorage.getItem(key); return r !== null ? JSON.parse(r) : fb } catch { return fb }
+}
+
+function BrokerLogo({ broker, size = 24 }: { broker: Broker; size?: number }) {
+  const [imgError, setImgError] = useState(false)
+  if (imgError) {
+    return (
+      <span style={{
+        width: size, height: size, borderRadius: 6,
+        background: broker.color, color: '#fff',
+        display: 'grid', placeItems: 'center',
+        fontSize: size * 0.4, fontWeight: 800, flexShrink: 0,
+        fontFamily: 'var(--sans)',
+      }}>
+        {broker.name.slice(0, 2).toUpperCase()}
+      </span>
+    )
+  }
+  return (
+    <img
+      src={broker.logo}
+      width={size}
+      height={size}
+      alt={broker.name}
+      style={{ borderRadius: 6, objectFit: 'contain', flexShrink: 0 }}
+      onError={() => setImgError(true)}
+    />
+  )
 }
 
 function BrokerDropdown() {
@@ -57,7 +84,7 @@ function BrokerDropdown() {
       <button
         onClick={() => setOpen(o => !o)}
         style={{
-          display: 'flex', alignItems: 'center', gap: 7,
+          display: 'flex', alignItems: 'center', gap: 8,
           padding: '7px 14px', borderRadius: 999,
           border: '1px solid var(--line)', background: 'var(--paper)',
           cursor: 'pointer', fontSize: 13.5,
@@ -65,10 +92,7 @@ function BrokerDropdown() {
           color: 'var(--ink)', transition: 'border-color .15s',
         }}
       >
-        <span style={{
-          width: 8, height: 8, borderRadius: '50%',
-          background: active.color, flexShrink: 0,
-        }} />
+        <BrokerLogo broker={active} size={24} />
         {active.name}
         <Ico d={I.chevron} s={14} />
       </button>
@@ -78,7 +102,7 @@ function BrokerDropdown() {
           position: 'absolute', top: 'calc(100% + 6px)', right: 0,
           background: 'var(--paper)', border: '1px solid var(--line)',
           borderRadius: 'var(--r)', boxShadow: 'var(--sh-lg)',
-          minWidth: 210, padding: 5, zIndex: 50,
+          minWidth: 250, padding: 5, zIndex: 50,
           animation: 'eqFadeUp .2s var(--ease)',
         }}>
           {BROKERS.map(b => {
@@ -89,28 +113,30 @@ function BrokerDropdown() {
                 key={b.id}
                 onClick={() => pick(b.id)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
+                  display: 'flex', alignItems: 'center', gap: 11,
                   width: '100%', padding: '9px 11px',
                   borderRadius: 'calc(var(--r) - 2px)',
                   border: 'none', cursor: 'pointer', textAlign: 'left',
                   background: isSel ? 'var(--bg)' : 'transparent',
+                  transition: 'background .12s',
                 }}
+                onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
+                onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
               >
-                <span style={{
-                  width: 9, height: 9, borderRadius: '50%',
-                  background: b.color, flexShrink: 0,
-                }} />
-                <div style={{ flex: 1 }}>
+                <BrokerLogo broker={b} size={32} />
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>{b.name}</div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                   {bv && bv.total > 0 && (
-                    <div style={{ fontSize: 11.5, color: 'var(--faint)', marginTop: 1 }}>{inr(bv.total)}</div>
+                    <span style={{ fontSize: 12, color: 'var(--faint)' }}>{inr(bv.total)}</span>
+                  )}
+                  {isSel && (
+                    <span style={{ color: 'var(--green)' }}>
+                      <Ico d={I.check} s={15} />
+                    </span>
                   )}
                 </div>
-                {isSel && (
-                  <span style={{ color: 'var(--green)', flexShrink: 0 }}>
-                    <Ico d={I.check} s={15} />
-                  </span>
-                )}
               </button>
             )
           })}
@@ -123,6 +149,8 @@ function BrokerDropdown() {
 export default function DashboardPage() {
   const { liveHoldings, liveWl, cash, txns, loading, activeBroker,
           portfolioValue, totalPL, totalPLpct, todayPL, todayPct, openTrade } = useDash()
+
+  const activeBrokerObj = BROKERS.find(b => b.id === activeBroker)!
 
   /* Re-trigger fade animation when broker switches */
   const [fadeKey, setFadeKey] = useState(0)
@@ -139,9 +167,21 @@ export default function DashboardPage() {
       <div className="page-head" style={{ alignItems: 'center' }}>
         <div>
           <div className="crumb">Dashboard <span>·</span> <b>Personal Portfolio</b></div>
-          <h1>Welcome to equicrore
-            {loading && <span style={{ fontSize: 13, color: 'var(--faint)', fontWeight: 400, marginLeft: 12 }}>Fetching live prices…</span>}
-          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <h1 style={{ margin: 0 }}>Welcome to equicrore
+              {loading && <span style={{ fontSize: 13, color: 'var(--faint)', fontWeight: 400, marginLeft: 12 }}>Fetching live prices…</span>}
+            </h1>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'var(--paper)', border: '1px solid var(--line)',
+              borderRadius: 999, padding: '6px 12px', flexShrink: 0,
+            }}>
+              <BrokerLogo broker={activeBrokerObj} size={20} />
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', fontFamily: 'var(--sans)' }}>
+                {activeBrokerObj.name}
+              </span>
+            </div>
+          </div>
         </div>
         <BrokerDropdown />
         <button className="btn btn-solid" onClick={() => openTrade()}>
@@ -152,7 +192,7 @@ export default function DashboardPage() {
       <div className="stats">
         <StatCard icon={I.spark}  k="Today's P/L"     value={Math.abs(todayPL)} change={pct(Math.abs(todayPct))} changeUp={todayPL >= 0} />
         <StatCard icon={I.chart}  k="Total returns"   value={totalPL}        change={pct(totalPLpct)} changeUp={totalPL >= 0} />
-        <StatCard icon={I.bag}    k="Portfolio value" value={portfolioValue} change={pct(totalPLpct)} changeUp={totalPL >= 0}        sub="all-time" />
+        <StatCard icon={I.bag}    k="Portfolio value" value={portfolioValue} change={pct(totalPLpct)} changeUp={totalPL >= 0} sub="all-time" />
         <StatCard icon={I.wallet} k="Cash available"  value={cash} sub="ready to invest" />
       </div>
 
