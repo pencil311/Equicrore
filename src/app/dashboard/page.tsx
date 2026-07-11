@@ -38,13 +38,13 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid-2">
-        <PerfPanel portfolioValue={portfolioValue} totalPL={totalPL} totalPLpct={totalPLpct} />
-        <AllocationPanel holdings={liveHoldings} cash={cash} portfolioValue={portfolioValue} />
+        <HoldingsPanel holdings={liveHoldings} onTrade={openTrade} />
+        <PerformanceSummaryPanel />
       </div>
 
       <div className="grid-2">
-        <HoldingsPanel holdings={liveHoldings} onTrade={openTrade} />
-        <PerformanceSummaryPanel />
+        <PerfPanel portfolioValue={portfolioValue} totalPL={totalPL} totalPLpct={totalPLpct} />
+        <AllocationPanel holdings={liveHoldings} cash={cash} portfolioValue={portfolioValue} />
       </div>
 
       <TransactionsPanel txns={txns} />
