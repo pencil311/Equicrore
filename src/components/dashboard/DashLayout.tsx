@@ -56,7 +56,7 @@ const nav = [
   { id: 'portfolio',  icon: I.bag,   label: 'Portfolio',    href: '/dashboard/portfolio' },
   { id: 'markets',    icon: I.chart, label: 'Markets',      href: '/dashboard/markets' },
   { id: 'watchlist',  icon: I.star,  label: 'Watchlist',    href: '/dashboard/watchlist' },
-  { id: 'orders',     icon: I.trend, label: '',  href: '/dashboard/' },
+  { id: 'performance', icon: I.trend, label: 'Positions', href: '/dashboard/performance' },
   { grp: 'Clients' },
   { id: 'clients',    icon: I.users, label: 'Clients',      href: '/dashboard/clients' },
 ]
