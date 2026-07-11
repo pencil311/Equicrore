@@ -3,6 +3,7 @@ import { createContext, useContext } from 'react'
 import type { PortfolioHolding, TradeRecord } from '@/lib/portfolio'
 import type { WatchlistItem } from '@/lib/mockData'
 import type { LivePrice } from '@/hooks/useLivePrices'
+import type { BrokerId } from '@/lib/brokers'
 
 export interface DashState {
   holdings:        PortfolioHolding[]
@@ -21,6 +22,8 @@ export interface DashState {
   todayPL:         number
   todayPct:        number
   assets:          WatchlistItem[]
+  activeBroker:    BrokerId
+  setActiveBroker: (b: BrokerId) => void
   openTrade:       (asset?: WatchlistItem) => void
 }
 

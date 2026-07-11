@@ -305,11 +305,12 @@ interface RecordModalProps {
   sym: string
   name: string
   color: string
+  recordKey?: string
   onClose: () => void
   onSubmit: (record: TradeRecord) => void
 }
 
-export function RecordModal({ open, sym, name, color, onClose, onSubmit }: RecordModalProps) {
+export function RecordModal({ open, sym, name, color, recordKey = 'eq-records', onClose, onSubmit }: RecordModalProps) {
   const [date, setDate]             = useState('')
   const [type, setType]             = useState<'BUY' | 'SELL'>('BUY')
   const [quantity, setQuantity]     = useState('')
@@ -351,9 +352,9 @@ export function RecordModal({ open, sym, name, color, onClose, onSubmit }: Recor
       profit: profitNum, date, status,
     }
     try {
-      const existing: TradeRecord[] = JSON.parse(localStorage.getItem('eq-records') || '[]')
+      const existing: TradeRecord[] = JSON.parse(localStorage.getItem(recordKey) || '[]')
       existing.unshift(record)
-      localStorage.setItem('eq-records', JSON.stringify(existing))
+      localStorage.setItem(recordKey, JSON.stringify(existing))
       saveUserData('records', existing).catch(() => {})
       window.dispatchEvent(new CustomEvent('eq-record-added'))
       window.dispatchEvent(new Event('storage'))

@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSession, getSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { sanitizeString } from '@/lib/sanitize'
@@ -10,8 +10,6 @@ import { DashContext } from '@/lib/dashContext'
 import {
   type PortfolioHolding,
   type TradeRecord,
-  saveHoldings,
-  saveCash,
   saveStartingCapital,
   processRecord,
 } from '@/lib/portfolio'
@@ -22,11 +20,23 @@ import {
 import { useTheme } from '@/hooks/useTheme'
 import { useLivePrices, mergeWatchlist, mergeHoldings } from '@/hooks/useLivePrices'
 import { loadAllUserData, saveUserData } from '@/lib/userStorage'
+import { type BrokerId, brokerKeys, getActiveBroker } from '@/lib/brokers'
+
+function readLS<T>(key: string, fallback: T): T {
+  try {
+    if (typeof window === 'undefined') return fallback
+    const r = localStorage.getItem(key)
+    return r !== null ? (JSON.parse(r) as T) : fallback
+  } catch { return fallback }
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { data: session, status, update } = useSession() as any
   const router = useRouter()
   const { theme, toggleTheme } = useTheme()
+
+  const [activeBroker, setActiveBrokerState] = useState<BrokerId>(() => getActiveBroker())
+  const activeBrokerRef = useRef<BrokerId>(activeBroker)
 
   const [holdings, setHoldings]           = useState<PortfolioHolding[]>([])
   const [cash, setCash]                   = useState(0)
@@ -41,6 +51,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [editInput, setEditInput]         = useState('')
   const [nameInput, setNameInput]         = useState('')
   const [nameSaving, setNameSaving]       = useState(false)
+
+  /* Keep ref in sync so event callbacks always see the current broker */
+  useEffect(() => { activeBrokerRef.current = activeBroker }, [activeBroker])
 
   /* Redirect if unauthenticated */
   useEffect(() => {
@@ -59,33 +72,46 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (status !== 'authenticated') return
     loadAllUserData().then(data => {
-      setHoldings(data.holdings)
-      setCash(data.cash)
-      setStartingCapital(data.startingCapital)
-      setTxns(data.records)
-      setClientsTotal(data.clients.reduce((s: number, c: any) => s + (c.clientAmount || 0), 0))
-      /* Seed localStorage so event-driven refresh handlers keep working */
       if (typeof window !== 'undefined') {
-        localStorage.setItem('eq-holdings',          JSON.stringify(data.holdings))
-        localStorage.setItem('eq-cash',              JSON.stringify(data.cash))
-        localStorage.setItem('eq-records',           JSON.stringify(data.records))
-        localStorage.setItem('eq-starting-capital',  JSON.stringify(data.startingCapital))
-        localStorage.setItem('eq-clients',           JSON.stringify(data.clients))
+        /* Seed Dhan broker keys from MongoDB if they don't exist yet */
+        if (!localStorage.getItem('eq-holdings-dhan'))
+          localStorage.setItem('eq-holdings-dhan', JSON.stringify(data.holdings))
+        if (!localStorage.getItem('eq-cash-dhan'))
+          localStorage.setItem('eq-cash-dhan', JSON.stringify(data.cash))
+        if (!localStorage.getItem('eq-records-dhan'))
+          localStorage.setItem('eq-records-dhan', JSON.stringify(data.records))
+        localStorage.setItem('eq-starting-capital', JSON.stringify(data.startingCapital))
+        localStorage.setItem('eq-clients',          JSON.stringify(data.clients))
       }
+      const cur = activeBrokerRef.current
+      const keys = brokerKeys(cur)
+      setHoldings(readLS(keys.holdings, []))
+      setCash(readLS(keys.cash, 0))
+      setTxns(readLS(keys.records, []))
+      setStartingCapital(data.startingCapital)
+      setClientsTotal(data.clients.reduce((s: number, c: any) => s + (c.clientAmount || 0), 0))
     })
   }, [status])
 
+  /* Reload data when broker changes */
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    localStorage.setItem('eq-active-broker', activeBroker)
+    const keys = brokerKeys(activeBroker)
+    setHoldings(readLS(keys.holdings, []))
+    setCash(readLS(keys.cash, 0))
+    setTxns(readLS(keys.records, []))
+  }, [activeBroker])
+
   /* Refresh state from localStorage when any component writes a record */
   useEffect(() => {
-    function read<T>(key: string, fb: T): T {
-      try { const r = localStorage.getItem(key); return r !== null ? JSON.parse(r) : fb } catch { return fb }
-    }
     const refresh = () => {
-      setHoldings(read('eq-holdings', []))
-      setCash(read<number>('eq-cash', 0))
-      setTxns(read('eq-records', []))
-      setStartingCapital(read<number>('eq-starting-capital', 0))
-      setClientsTotal(read<any[]>('eq-clients', []).reduce((s: number, c: any) => s + (c.clientAmount || 0), 0))
+      const keys = brokerKeys(activeBrokerRef.current)
+      setHoldings(readLS(keys.holdings, []))
+      setCash(readLS(keys.cash, 0))
+      setTxns(readLS(keys.records, []))
+      setStartingCapital(readLS<number>('eq-starting-capital', 0))
+      setClientsTotal(readLS<any[]>('eq-clients', []).reduce((s: number, c: any) => s + (c.clientAmount || 0), 0))
     }
     window.addEventListener('eq-record-added', refresh)
     window.addEventListener('storage', refresh)
@@ -94,6 +120,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       window.removeEventListener('storage', refresh)
     }
   }, [])
+
+  function setActiveBroker(b: BrokerId) {
+    setActiveBrokerState(b)
+  }
 
   const allSymbols = Array.from(new Set([...holdings.map(h => h.sym), ...wl.map(w => w.sym)]))
   const { prices, loading } = useLivePrices(allSymbols, 15000)
@@ -104,7 +134,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const marketValue    = liveHoldings.reduce((s, h) => s + h.qty * h.price, 0)
   const portfolioValue = clientsTotal
 
-  /* P&L derived from recorded trade profits, not live price deltas */
   const totalPL    = txns.reduce((s, r) => s + (Number(r.profit) || 0), 0)
   const totalPLpct = portfolioValue > 0 ? (totalPL / portfolioValue) * 100 : 0
 
@@ -127,12 +156,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const { holdings: newH, cash: newC } = processRecord(rec, holdings, cash)
     setHoldings(newH)
     setCash(newC)
-    saveHoldings(newH)
-    saveCash(newC)
+    const keys = brokerKeys(activeBroker)
+    localStorage.setItem(keys.holdings, JSON.stringify(newH))
+    localStorage.setItem(keys.cash,     JSON.stringify(newC))
     saveUserData('holdings', newH).catch(() => {})
     saveUserData('cash', newC).catch(() => {})
-    /* txns + eq-records are written by RecordModal before onSubmit fires;
-       the eq-record-added listener reloads txns from localStorage */
   }
 
   function openEditPortfolio() {
@@ -146,9 +174,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       saveStartingCapital(val)
       setStartingCapital(val)
       saveUserData('starting-capital', val).catch(() => {})
-      /* Set cash so (cash + current market value) = entered capital */
       const newCash = Math.max(0, val - marketValue)
-      saveCash(newCash)
+      const keys = brokerKeys(activeBroker)
+      localStorage.setItem(keys.cash, JSON.stringify(newCash))
       setCash(newCash)
       saveUserData('cash', newCash).catch(() => {})
     }
@@ -194,7 +222,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <DashContext.Provider value={{
       holdings, liveHoldings, cash, startingCapital, txns, wl, liveWl, prices, loading,
       portfolioValue, marketValue, totalPL, totalPLpct, todayPL, todayPct,
-      assets, openTrade,
+      assets, activeBroker, setActiveBroker, openTrade,
     }}>
       {/* Hover trigger zone */}
       <div
@@ -349,6 +377,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         sym={modal.asset?.sym ?? ''}
         name={modal.asset?.name ?? ''}
         color={modal.asset?.color ?? 'var(--green)'}
+        recordKey={brokerKeys(activeBroker).records}
         onClose={() => setModal({ open: false, asset: null })}
         onSubmit={doRecord}
       />
