@@ -20,20 +20,24 @@ function readLSSnapshot<T>(key: string, fb: T): T {
   try { const r = localStorage.getItem(key); return r !== null ? JSON.parse(r) : fb } catch { return fb }
 }
 
+function BrokerInitials({ broker, size }: { broker: Broker; size: number }) {
+  return (
+    <span style={{
+      width: size, height: size, borderRadius: 6,
+      background: broker.color, color: '#fff',
+      display: 'grid', placeItems: 'center',
+      fontSize: size * 0.4, fontWeight: 800, flexShrink: 0,
+      fontFamily: 'var(--sans)',
+    }}>
+      {broker.name.slice(0, 2).toUpperCase()}
+    </span>
+  )
+}
+
 function BrokerLogo({ broker, size = 24 }: { broker: Broker; size?: number }) {
   const [imgError, setImgError] = useState(false)
-  if (imgError) {
-    return (
-      <span style={{
-        width: size, height: size, borderRadius: 6,
-        background: broker.color, color: '#fff',
-        display: 'grid', placeItems: 'center',
-        fontSize: size * 0.4, fontWeight: 800, flexShrink: 0,
-        fontFamily: 'var(--sans)',
-      }}>
-        {broker.name.slice(0, 2).toUpperCase()}
-      </span>
-    )
+  if (!broker.logo || imgError) {
+    return <BrokerInitials broker={broker} size={size} />
   }
   return (
     <img

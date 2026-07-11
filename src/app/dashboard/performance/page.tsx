@@ -442,8 +442,8 @@ export default function PerformancePage() {
     <div className="content fade">
       <div className="page-head">
         <div>
-          <div className="crumb">Dashboard <span>·</span> <b>Performance</b></div>
-          <h1>Performance</h1>
+          <div className="crumb">Dashboard <span>·</span> <b>Positions</b></div>
+          <h1>Positions</h1>
           <div className="sub" style={{ marginTop: 2 }}></div>
         </div>
       </div>
