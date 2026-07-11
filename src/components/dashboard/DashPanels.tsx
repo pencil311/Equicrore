@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import AreaChart from '@/components/charts/AreaChart'
 import Donut from '@/components/charts/Donut'
 import { useCountUp } from '@/hooks/useCountUp'
@@ -58,20 +58,46 @@ export function StatCard({ icon, k, value, dec = 0, isCur = true, change, change
 /* ---- PerfPanel ---- */
 interface PerfPanelProps {
   portfolioValue: number
-  totalPL: number
-  totalPLpct: number
+  records: TradeRecord[]
 }
 
-export function PerfPanel({ portfolioValue, totalPL, totalPLpct }: PerfPanelProps) {
+const PERIOD_LABELS: Record<string, string> = {
+  '1D': 'today', '1W': 'this week', '1M': 'this month', '1Y': 'this year', 'All': 'all-time',
+}
+
+export function PerfPanel({ portfolioValue, records }: PerfPanelProps) {
   const [tf, setTf] = useState('1Y')
   const s = perfData[tf]
-  const up = totalPL >= 0
+
+  const periodPL = useMemo(() => {
+    const now = new Date()
+    const today = now.toISOString().split('T')[0]
+    let filtered = records
+    if (tf === '1D') {
+      filtered = records.filter(r => r.date === today)
+    } else if (tf === '1W') {
+      const cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      filtered = records.filter(r => r.date >= cutoff)
+    } else if (tf === '1M') {
+      const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      filtered = records.filter(r => r.date >= cutoff)
+    } else if (tf === '1Y') {
+      const cutoff = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      filtered = records.filter(r => r.date >= cutoff)
+    }
+    return filtered.reduce((sum, r) => sum + (Number(r.profit) || 0), 0)
+  }, [tf, records])
+
+  const label = PERIOD_LABELS[tf]
+  const periodPct = portfolioValue > 0 ? (periodPL / portfolioValue) * 100 : 0
+  const up = periodPL >= 0
+
   return (
     <div className="panel">
       <div className="panel-head">
         <div>
           <h3>Portfolio performance</h3>
-          <div className="sub">Personal portfolio · all-time</div>
+          <div className="sub">Personal portfolio · {label}</div>
         </div>
         <div className="tfbar">
           {['1D', '1W', '1M', '1Y', 'All'].map(t => (
@@ -82,7 +108,7 @@ export function PerfPanel({ portfolioValue, totalPL, totalPLpct }: PerfPanelProp
       <div className="perf-top">
         <div className="perf-val num">{inr(portfolioValue)}</div>
         <div className={`perf-sub ${up ? 'up' : 'down'}`}>
-          {up ? '▲ ' : '▼ '}{inr(Math.abs(totalPL))}  ({pct(totalPLpct)}) all-time
+          {up ? '▲ ' : '▼ '}{inr(Math.abs(periodPL))} ({pct(Math.abs(periodPct))}) {label}
         </div>
       </div>
       <AreaChart data={s.data} labels={s.labels} key={tf} />
@@ -352,9 +378,9 @@ export function RecordModal({ open, sym, name, color, recordKey = 'eq-records', 
       profit: profitNum, date, status,
     }
     try {
-      const existing: TradeRecord[] = JSON.parse(localStorage.getItem(recordKey) || '[]')
+      const existing: TradeRecord[] = JSON.parse(localStorage.getItem('eq-records') || '[]')
       existing.unshift(record)
-      localStorage.setItem(recordKey, JSON.stringify(existing))
+      localStorage.setItem('eq-records', JSON.stringify(existing))
       saveUserData('records', existing).catch(() => {})
       window.dispatchEvent(new CustomEvent('eq-record-added'))
       window.dispatchEvent(new Event('storage'))

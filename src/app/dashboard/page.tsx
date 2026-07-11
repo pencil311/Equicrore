@@ -22,19 +22,18 @@ function readLSSnapshot<T>(key: string, fb: T): T {
 
 function BrokerLogo({ broker, size = 24 }: { broker: Broker; size?: number }) {
   const [imgError, setImgError] = useState(false)
-  if (imgError) {
-    return (
-      <span style={{
-        width: size, height: size, borderRadius: 6,
-        background: broker.color, color: '#fff',
-        display: 'grid', placeItems: 'center',
-        fontSize: size * 0.4, fontWeight: 800, flexShrink: 0,
-        fontFamily: 'var(--sans)',
-      }}>
-        {broker.name.slice(0, 2).toUpperCase()}
-      </span>
-    )
-  }
+  const initials = (
+    <span style={{
+      width: size, height: size, borderRadius: 6,
+      background: broker.color, color: '#fff',
+      display: 'grid', placeItems: 'center',
+      fontSize: size * 0.4, fontWeight: 800, flexShrink: 0,
+      fontFamily: 'var(--sans)',
+    }}>
+      {broker.name.slice(0, 2).toUpperCase()}
+    </span>
+  )
+  if (!broker.logo || imgError) return initials
   return (
     <img
       src={broker.logo}
@@ -202,7 +201,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid-2">
-        <PerfPanel portfolioValue={portfolioValue} totalPL={totalPL} totalPLpct={totalPLpct} />
+        <PerfPanel portfolioValue={portfolioValue} records={txns} />
         <AllocationPanel holdings={liveHoldings} cash={cash} portfolioValue={portfolioValue} />
       </div>
 
