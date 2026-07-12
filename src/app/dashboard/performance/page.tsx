@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
 import { inr } from '@/lib/format'
 import { Ico } from '@/components/dashboard/DashLayout'
 import type { TradeRecord } from '@/lib/portfolio'
@@ -490,7 +490,7 @@ function ModalShell({ title, onClose, maxWidth = 460, children }: {
 }
 
 /* ---- Open Position Modal ---- */
-function OpenPositionModal({ onClose, onSave }: {
+const OpenPositionModal = memo(function OpenPositionModal({ onClose, onSave }: {
   onClose: () => void
   onSave: (pos: Omit<OpenPosition, 'id'>) => void
 }) {
@@ -500,30 +500,44 @@ function OpenPositionModal({ onClose, onSave }: {
   const [entryPrice, setEntryPrice] = useState('')
   const [cat, setCat]               = useState('Equities')
   const [fetching, setFetching]     = useState(false)
+  const [error, setError]           = useState('')
 
   const priceSym = instrument ? toPriceSym(instrument.sym) : null
 
   async function fillLive() {
     if (!priceSym) return
     setFetching(true)
+    setError('')
     const p = await fetchLivePrice(priceSym)
     setFetching(false)
-    if (p != null) setEntryPrice(String(p))
+    if (p != null) {
+      setEntryPrice(String(p))
+    } else {
+      setError('Could not fetch live price — enter manually')
+    }
   }
 
   function submit() {
-    if (!instrument || !qty || !entryPrice) return
-    onSave({
-      sym: priceSym || instrument.sym.split(':').pop() || instrument.sym,
-      instrument: instrument.name,
-      tvSym: instrument.sym,
-      side,
-      qty: Number(qty),
-      entryPrice: Number(entryPrice),
-      openedAt: new Date().toISOString().split('T')[0],
-      category: cat,
-    })
-    onClose()
+    setError('')
+    try {
+      if (!instrument) { setError('Please select an instrument'); return }
+      if (!qty || Number(qty) <= 0) { setError('Please enter a valid quantity'); return }
+      if (!entryPrice || Number(entryPrice) <= 0) { setError('Please enter a valid entry price'); return }
+      onSave({
+        sym: priceSym || instrument.sym.split(':').pop() || instrument.sym,
+        instrument: instrument.name,
+        tvSym: instrument.sym,
+        side,
+        qty: Number(qty),
+        entryPrice: Number(entryPrice),
+        openedAt: new Date().toISOString().split('T')[0],
+        category: cat,
+      })
+      onClose()
+    } catch (err) {
+      console.error('Failed to open position:', err)
+      setError('Failed to open position — please try again')
+    }
   }
 
   const sideBtn = (s: 'long' | 'short', label: string, col: string) => (
@@ -556,7 +570,7 @@ function OpenPositionModal({ onClose, onSave }: {
         <label style={labelStyle}>Quantity</label>
         <input
           type="number" min="0" value={qty}
-          onChange={e => setQty(e.target.value)}
+          onChange={e => { setQty(e.target.value); setError('') }}
           placeholder="0" style={fieldStyle}
         />
 
@@ -564,7 +578,7 @@ function OpenPositionModal({ onClose, onSave }: {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input
             type="number" min="0" value={entryPrice}
-            onChange={e => setEntryPrice(e.target.value)}
+            onChange={e => { setEntryPrice(e.target.value); setError('') }}
             placeholder="0.00"
             style={{ ...fieldStyle, flex: 1 }}
           />
@@ -586,6 +600,11 @@ function OpenPositionModal({ onClose, onSave }: {
           ))}
         </div>
       </div>
+      {error && (
+        <div style={{ margin: '0 22px 14px', padding: '8px 12px', background: 'rgba(217,79,79,.08)', border: '1px solid rgba(217,79,79,.25)', borderRadius: 6, color: '#d94f4f', fontSize: 13 }}>
+          {error}
+        </div>
+      )}
       <div style={{ padding: '14px 22px', borderTop: '1px solid var(--line)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
         <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
         <button
@@ -596,7 +615,7 @@ function OpenPositionModal({ onClose, onSave }: {
       </div>
     </ModalShell>
   )
-}
+})
 
 /* ---- Close Position Modal ---- */
 function CloseModal({ pos, livePrice, onClose, onConfirm }: {
@@ -845,7 +864,8 @@ export default function PerformancePage() {
     () => Array.from(new Set(openPositions.map(p => p.sym))),
     [openPositions]
   )
-  const { prices: livePrices } = useLivePrices(posPriceSyms, 5000)
+  /* Pause polling while the modal is open so it can't interfere with form state */
+  const { prices: livePrices } = useLivePrices(showOpenModal ? [] : posPriceSyms, 5000)
 
   /* Unrealised P&L */
   const unrealisedPL = useMemo(() => {
@@ -918,13 +938,17 @@ export default function PerformancePage() {
     setPendingDelete(null)
   }
 
-  /* Position handlers */
-  function handlePositionOpened(data: Omit<OpenPosition, 'id'>) {
+  /* Stable modal callbacks — useCallback so memo(OpenPositionModal) doesn't re-render on price ticks */
+  const handleModalClose = useCallback(() => setShowOpenModal(false), [])
+
+  const handlePositionOpened = useCallback((data: Omit<OpenPosition, 'id'>) => {
     const pos: OpenPosition = { ...data, id: Date.now().toString() }
-    const next = [...openPositions, pos]
-    setOpenPositions(next)
-    writeOpenPositions(next)
-  }
+    setOpenPositions(prev => {
+      const next = [...prev, pos]
+      writeOpenPositions(next)
+      return next
+    })
+  }, [])
 
   function handlePositionClosed(pos: OpenPosition, exitPrice: number, finalPL: number) {
     const today = new Date().toISOString().split('T')[0]
@@ -1200,7 +1224,7 @@ export default function PerformancePage() {
       {/* Open Position Modal */}
       {showOpenModal && (
         <OpenPositionModal
-          onClose={() => setShowOpenModal(false)}
+          onClose={handleModalClose}
           onSave={handlePositionOpened}
         />
       )}
