@@ -5,16 +5,84 @@ import { Ico } from '@/components/dashboard/DashLayout'
 import type { TradeRecord } from '@/lib/portfolio'
 import { recalculateHoldings, saveHoldings, saveCash, getStartingCapital } from '@/lib/portfolio'
 import { getUserData, saveUserData } from '@/lib/userStorage'
+import { allSymbols, type WatchSymbol } from '@/lib/watchlists'
+import { useLivePrices, type LivePrice } from '@/hooks/useLivePrices'
 
+/* ---- Icons ---- */
 const JOURNAL_ICON  = 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z'
 const CHEVRON       = 'M6 9l6 6 6-6'
 const DOWNLOAD_ICON = 'M12 15V3M12 15l-4-4M12 15l4-4M3 19h18'
 const TRASH_ICON    = 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6'
+const PLUS_ICON     = 'M12 5v14M5 12h14'
+const CLOSE_ICON    = 'M18 6L6 18M6 6l12 12'
 
+/* ---- Types ---- */
+interface OpenPosition {
+  id: string
+  sym: string
+  instrument: string
+  tvSym: string
+  side: 'long' | 'short'
+  qty: number
+  entryPrice: number
+  openedAt: string
+  category: string
+}
+
+/* ---- Constants ---- */
 const CATS        = ['All', 'Equities', 'FNO', 'Commodities', 'Crypto', 'Forex'] as const
+const POS_CATS    = ['Equities', 'FNO', 'Commodities', 'Crypto', 'Forex'] as const
 const QUICK_TIMES = ['1W', '1M', '3M', '6M', 'Max'] as const
 type QuickTime = typeof QUICK_TIMES[number]
 type TimeKey   = QuickTime | 'custom'
+const OPEN_POS_KEY = 'eq-open-positions'
+
+/* ---- Shared styles ---- */
+const OVERLAY: React.CSSProperties = {
+  position: 'fixed', inset: 0, zIndex: 999,
+  background: 'rgba(0,0,0,.45)',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+}
+const MODAL: React.CSSProperties = {
+  background: 'var(--paper)', borderRadius: 'var(--r)',
+  boxShadow: 'var(--sh-lg)', width: '100%', maxWidth: 460,
+  animation: 'eqFadeUp .18s var(--ease)',
+}
+const fieldStyle: React.CSSProperties = {
+  width: '100%', border: '1.5px solid var(--line)',
+  borderRadius: 'var(--r-sm)', padding: '8px 12px',
+  fontSize: 14, fontFamily: 'var(--sans)',
+  color: 'var(--ink)', background: 'var(--bg)',
+  outline: 'none', boxSizing: 'border-box',
+}
+const labelStyle: React.CSSProperties = {
+  display: 'block', fontSize: 11, fontWeight: 700,
+  textTransform: 'uppercase', letterSpacing: '.06em',
+  color: 'var(--faint)', marginBottom: 5, marginTop: 14,
+}
+
+/* ---- Helpers ---- */
+function toPriceSym(tvSym: string): string {
+  const base = tvSym.includes(':') ? tvSym.split(':')[1] : tvSym
+  return base.endsWith('USDT') ? base.slice(0, -4) : base
+}
+
+function readOpenPositions(): OpenPosition[] {
+  try { return JSON.parse(localStorage.getItem(OPEN_POS_KEY) || '[]') } catch { return [] }
+}
+
+function writeOpenPositions(pos: OpenPosition[]): void {
+  try { localStorage.setItem(OPEN_POS_KEY, JSON.stringify(pos)) } catch {}
+}
+
+async function fetchLivePrice(sym: string): Promise<number | null> {
+  try {
+    const res = await fetch(`/api/prices?symbols=${encodeURIComponent(sym)}`)
+    if (!res.ok) return null
+    const data = await res.json() as Record<string, { price?: number }>
+    return data[sym]?.price ?? null
+  } catch { return null }
+}
 
 function fmtDate(iso: string) {
   if (!iso) return '—'
@@ -38,7 +106,6 @@ function plStr(val: number) {
   return `${val > 0 ? '+' : '−'}${inr(Math.abs(val))}`
 }
 
-/* ---- HTML report helpers ---- */
 function esc(s: string) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
@@ -183,8 +250,7 @@ function buildHTML(
 </html>`
 }
 
-/* ---- Sub-components ---- */
-
+/* ---- Chip ---- */
 function Chip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
@@ -202,6 +268,7 @@ function Chip({ label, active, onClick }: { label: string; active: boolean; onCl
   )
 }
 
+/* ---- DropBtn ---- */
 function DropBtn({ label, open, onClick }: { label: string; open: boolean; onClick: () => void }) {
   return (
     <button
@@ -225,6 +292,7 @@ function DropBtn({ label, open, onClick }: { label: string; open: boolean; onCli
   )
 }
 
+/* ---- DropPanel ---- */
 function DropPanel({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
@@ -239,6 +307,7 @@ function DropPanel({ children }: { children: React.ReactNode }) {
   )
 }
 
+/* ---- DelBtn ---- */
 function DelBtn({ pending, onDelete, onConfirm, onCancel }: {
   pending: boolean
   onDelete: () => void
@@ -285,6 +354,433 @@ function DelBtn({ pending, onDelete, onConfirm, onCancel }: {
   )
 }
 
+/* ---- InstrumentPicker ---- */
+function InstrumentPicker({ value, onChange }: {
+  value: WatchSymbol | null
+  onChange: (s: WatchSymbol) => void
+}) {
+  const [query, setQuery]   = useState('')
+  const [open, setOpen]     = useState(false)
+  const ref                 = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function h(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  const results = useMemo(() => {
+    if (!query.trim()) return []
+    const q = query.toLowerCase()
+    return allSymbols
+      .filter(s => s.name.toLowerCase().includes(q) || s.sym.toLowerCase().includes(q))
+      .slice(0, 10)
+  }, [query])
+
+  const displayVal = query || (value ? value.name : '')
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input
+        value={displayVal}
+        placeholder="Search instrument…"
+        onChange={e => { setQuery(e.target.value); setOpen(true) }}
+        onFocus={() => { setOpen(true); if (value) setQuery('') }}
+        style={fieldStyle}
+      />
+      {open && results.length > 0 && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+          background: 'var(--paper)', border: '1px solid var(--line)',
+          borderRadius: 'var(--r)', boxShadow: 'var(--sh-lg)',
+          maxHeight: 220, overflowY: 'auto', zIndex: 200,
+        }}>
+          {results.map(s => (
+            <button
+              key={s.sym}
+              type="button"
+              onClick={() => { onChange(s); setQuery(''); setOpen(false) }}
+              style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                width: '100%', padding: '9px 14px', gap: 8,
+                background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--bg)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
+            >
+              <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>{s.name}</span>
+              <span style={{ fontSize: 11.5, color: 'var(--faint)', flexShrink: 0 }}>{s.category}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ---- PLCell — flashes on price change ---- */
+function PLCell({ pl, pct }: { pl: number; pct: number }) {
+  const prevRef  = useRef(pl)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [flash, setFlash] = useState<'up' | 'down' | null>(null)
+
+  useEffect(() => {
+    if (Math.abs(pl - prevRef.current) > 0.001) {
+      if (timerRef.current) clearTimeout(timerRef.current)
+      setFlash(pl > prevRef.current ? 'up' : 'down')
+      timerRef.current = setTimeout(() => setFlash(null), 700)
+      prevRef.current = pl
+    }
+  }, [pl])
+
+  const up      = pl >= 0
+  const flashBg = flash === 'up'   ? 'rgba(0,154,81,.14)'
+                : flash === 'down' ? 'rgba(217,79,79,.14)'
+                : 'transparent'
+
+  return (
+    <div style={{
+      textAlign: 'right', borderRadius: 6, padding: '3px 8px',
+      background: flashBg, transition: 'background .7s ease',
+    }}>
+      <div style={{
+        fontWeight: 700, fontSize: 13.5, fontFamily: 'var(--serif)',
+        color: pl === 0 ? 'var(--muted)' : up ? 'var(--gain)' : 'var(--loss)',
+      }}>
+        {pl === 0 ? '₹0' : `${up ? '+' : '−'}${inr(Math.abs(pl))}`}
+      </div>
+      {pl !== 0 && (
+        <div style={{ fontSize: 11, color: up ? 'var(--gain)' : 'var(--loss)', marginTop: 1 }}>
+          {up ? '+' : '−'}{Math.abs(pct).toFixed(2)}%
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ---- Modal shell ---- */
+function ModalShell({ title, onClose, maxWidth = 460, children }: {
+  title: string
+  onClose: () => void
+  maxWidth?: number
+  children: React.ReactNode
+}) {
+  useEffect(() => {
+    function h(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', h)
+    return () => document.removeEventListener('keydown', h)
+  }, [onClose])
+
+  return (
+    <div style={OVERLAY} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ ...MODAL, maxWidth }}>
+        <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--faint)', padding: 4, display: 'flex' }}>
+            <Ico d={CLOSE_ICON} s={18} />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/* ---- Open Position Modal ---- */
+function OpenPositionModal({ onClose, onSave }: {
+  onClose: () => void
+  onSave: (pos: Omit<OpenPosition, 'id'>) => void
+}) {
+  const [instrument, setInstrument] = useState<WatchSymbol | null>(null)
+  const [side, setSide]             = useState<'long' | 'short'>('long')
+  const [qty, setQty]               = useState('')
+  const [entryPrice, setEntryPrice] = useState('')
+  const [cat, setCat]               = useState('Equities')
+  const [fetching, setFetching]     = useState(false)
+
+  const priceSym = instrument ? toPriceSym(instrument.sym) : null
+
+  async function fillLive() {
+    if (!priceSym) return
+    setFetching(true)
+    const p = await fetchLivePrice(priceSym)
+    setFetching(false)
+    if (p != null) setEntryPrice(String(p))
+  }
+
+  function submit() {
+    if (!instrument || !qty || !entryPrice) return
+    onSave({
+      sym: priceSym || instrument.sym.split(':').pop() || instrument.sym,
+      instrument: instrument.name,
+      tvSym: instrument.sym,
+      side,
+      qty: Number(qty),
+      entryPrice: Number(entryPrice),
+      openedAt: new Date().toISOString().split('T')[0],
+      category: cat,
+    })
+    onClose()
+  }
+
+  const sideBtn = (s: 'long' | 'short', label: string, col: string) => (
+    <button
+      type="button"
+      onClick={() => setSide(s)}
+      style={{
+        flex: 1, padding: '8px 0', borderRadius: 'var(--r-sm)',
+        border: `1.5px solid ${side === s ? col : 'var(--line)'}`,
+        background: side === s ? col : 'transparent',
+        color: side === s ? '#fff' : 'var(--ink)',
+        fontWeight: 600, fontSize: 13.5, fontFamily: 'var(--sans)', cursor: 'pointer',
+        transition: 'all .13s',
+      }}
+    >{label}</button>
+  )
+
+  return (
+    <ModalShell title="Open Position" onClose={onClose}>
+      <div style={{ padding: '4px 22px 18px' }}>
+        <label style={labelStyle}>Instrument</label>
+        <InstrumentPicker value={instrument} onChange={setInstrument} />
+
+        <label style={labelStyle}>Side</label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {sideBtn('long',  'Buy / Long',    'var(--green)')}
+          {sideBtn('short', 'Sell / Short',  '#d94f4f')}
+        </div>
+
+        <label style={labelStyle}>Quantity</label>
+        <input
+          type="number" min="0" value={qty}
+          onChange={e => setQty(e.target.value)}
+          placeholder="0" style={fieldStyle}
+        />
+
+        <label style={labelStyle}>Entry Price</label>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            type="number" min="0" value={entryPrice}
+            onChange={e => setEntryPrice(e.target.value)}
+            placeholder="0.00"
+            style={{ ...fieldStyle, flex: 1 }}
+          />
+          <button
+            type="button"
+            className="btn btn-ghost btn-mini"
+            style={{ flexShrink: 0, whiteSpace: 'nowrap' as const }}
+            onClick={fillLive}
+            disabled={!priceSym || fetching}
+          >
+            {fetching ? '…' : 'Live price'}
+          </button>
+        </div>
+
+        <label style={labelStyle}>Category</label>
+        <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+          {POS_CATS.map(c => (
+            <Chip key={c} label={c} active={cat === c} onClick={() => setCat(c)} />
+          ))}
+        </div>
+      </div>
+      <div style={{ padding: '14px 22px', borderTop: '1px solid var(--line)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button
+          className="btn btn-solid"
+          onClick={submit}
+          disabled={!instrument || !qty || !entryPrice}
+        >Open Position</button>
+      </div>
+    </ModalShell>
+  )
+}
+
+/* ---- Close Position Modal ---- */
+function CloseModal({ pos, livePrice, onClose, onConfirm }: {
+  pos: OpenPosition
+  livePrice: number | null
+  onClose: () => void
+  onConfirm: (exitPrice: number, finalPL: number) => void
+}) {
+  const [exitPrice, setExitPrice] = useState(
+    String(livePrice != null ? livePrice : pos.entryPrice)
+  )
+
+  const finalPL = useMemo(() => {
+    const ep = Number(exitPrice) || 0
+    return pos.side === 'long'
+      ? (ep - pos.entryPrice) * pos.qty
+      : (pos.entryPrice - ep) * pos.qty
+  }, [exitPrice, pos.entryPrice, pos.qty, pos.side])
+
+  const up = finalPL >= 0
+
+  return (
+    <ModalShell title="Close Position" onClose={onClose} maxWidth={380}>
+      <div style={{ padding: '4px 22px 18px' }}>
+        <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 10, marginBottom: 14, lineHeight: 1.6 }}>
+          <b>{pos.instrument}</b><br />
+          {pos.side === 'long' ? '▲ Long' : '▼ Short'} · {pos.qty} × {inr(pos.entryPrice)}
+        </div>
+
+        <label style={labelStyle}>Exit Price</label>
+        <input
+          type="number" value={exitPrice}
+          onChange={e => setExitPrice(e.target.value)}
+          style={fieldStyle} autoFocus
+        />
+
+        <div style={{ marginTop: 14, padding: '14px 16px', background: 'var(--bg)', borderRadius: 'var(--r)' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--faint)', marginBottom: 6 }}>
+            Final P&amp;L
+          </div>
+          <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--serif)', color: up ? 'var(--gain)' : '#d94f4f' }}>
+            {up ? '+' : '−'}{inr(Math.abs(finalPL))}
+          </div>
+        </div>
+      </div>
+      <div style={{ padding: '14px 22px', borderTop: '1px solid var(--line)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button
+          onClick={() => onConfirm(Number(exitPrice), finalPL)}
+          disabled={!exitPrice || Number(exitPrice) <= 0}
+          style={{
+            padding: '8px 20px', borderRadius: 'var(--r-sm)',
+            border: '1.5px solid #d94f4f', background: '#d94f4f', color: '#fff',
+            fontWeight: 700, fontSize: 13.5, fontFamily: 'var(--sans)',
+            cursor: 'pointer', opacity: (!exitPrice || Number(exitPrice) <= 0) ? 0.5 : 1,
+          }}
+        >Confirm Close</button>
+      </div>
+    </ModalShell>
+  )
+}
+
+/* ---- Open Positions Panel ---- */
+function OpenPositionsPanel({ positions, livePrices, onAdd, onPositionClose }: {
+  positions: OpenPosition[]
+  livePrices: Record<string, LivePrice>
+  onAdd: () => void
+  onPositionClose: (pos: OpenPosition, exitPrice: number, finalPL: number) => void
+}) {
+  const [closingPos, setClosingPos] = useState<OpenPosition | null>(null)
+
+  const COL = '1fr 80px 60px 110px 110px 140px 72px'
+
+  return (
+    <>
+      <div className="panel" style={{ marginBottom: 18 }}>
+        <div className="panel-head">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h3>Open Positions</h3>
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: 'var(--green)', display: 'inline-block',
+              animation: 'livePulse 2s infinite',
+            }} />
+          </div>
+          <button className="btn btn-solid btn-mini" style={{ gap: 5 }} onClick={onAdd}>
+            <Ico d={PLUS_ICON} s={13} /> Open Position
+          </button>
+        </div>
+
+        {positions.length === 0 ? (
+          <div style={{ padding: '36px 24px', textAlign: 'center', color: 'var(--faint)', fontSize: 13.5 }}>
+            No open positions — open one to track live P&amp;L
+          </div>
+        ) : (
+          <>
+            <div style={{
+              display: 'grid', gridTemplateColumns: COL, gap: 8,
+              padding: '8px 16px',
+              fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase' as const,
+              letterSpacing: '.06em', color: 'var(--faint)',
+              borderBottom: '1px solid var(--line)',
+            }}>
+              <span>Instrument</span>
+              <span>Side</span>
+              <span>Qty</span>
+              <span>Entry</span>
+              <span>Live</span>
+              <span style={{ textAlign: 'right' }}>Live P&amp;L</span>
+              <span />
+            </div>
+            <div className="list">
+              {positions.map(pos => {
+                const lpData   = livePrices[pos.sym]
+                const hasPrice = !!lpData && lpData.price > 0
+                const liveP    = hasPrice ? lpData.price : 0
+                const pl       = hasPrice
+                  ? (pos.side === 'long'
+                    ? (liveP - pos.entryPrice) * pos.qty
+                    : (pos.entryPrice - liveP) * pos.qty)
+                  : 0
+                const invested = pos.entryPrice * pos.qty
+                const plPct    = invested > 0 && hasPrice ? (pl / invested) * 100 : 0
+
+                return (
+                  <div key={pos.id} className="lrow" style={{
+                    display: 'grid', gridTemplateColumns: COL, gap: 8, alignItems: 'center',
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>{pos.instrument}</div>
+                      <div style={{ fontSize: 11, color: 'var(--faint)' }}>{pos.category} · {fmtDate(pos.openedAt)}</div>
+                    </div>
+                    <span>
+                      <span className={`txtype ${pos.side === 'long' ? 'buy' : 'sell'}`}>
+                        {pos.side === 'long' ? 'LONG' : 'SHORT'}
+                      </span>
+                    </span>
+                    <span style={{ fontSize: 13, color: 'var(--ink)' }}>{pos.qty}</span>
+                    <span style={{ fontSize: 13, color: 'var(--ink)' }}>{inr(pos.entryPrice)}</span>
+                    <span style={{ fontSize: 13, color: hasPrice ? 'var(--ink)' : 'var(--faint)' }}>
+                      {hasPrice ? inr(liveP) : '—'}
+                    </span>
+                    {hasPrice ? (
+                      <PLCell pl={pl} pct={plPct} />
+                    ) : (
+                      <div style={{ textAlign: 'right', fontSize: 11.5, color: 'var(--faint)', fontStyle: 'italic' }}>
+                        manual close only
+                      </div>
+                    )}
+                    <div style={{ textAlign: 'right' }}>
+                      <button
+                        onClick={() => setClosingPos(pos)}
+                        style={{
+                          padding: '4px 11px', borderRadius: 6,
+                          border: '1.5px solid #d94f4f', background: 'transparent',
+                          color: '#d94f4f', fontSize: 12, fontWeight: 600,
+                          fontFamily: 'var(--sans)', cursor: 'pointer',
+                        }}
+                      >Close</button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+      </div>
+
+      {closingPos && (
+        <CloseModal
+          pos={closingPos}
+          livePrice={livePrices[closingPos.sym]?.price ?? null}
+          onClose={() => setClosingPos(null)}
+          onConfirm={(exitPrice, finalPL) => {
+            onPositionClose(closingPos, exitPrice, finalPL)
+            setClosingPos(null)
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+/* ---- date input style (used by filter bar) ---- */
 const dateInputStyle: React.CSSProperties = {
   flex: 1, border: '1.5px solid var(--line)', borderRadius: 'var(--r-sm)',
   padding: '7px 10px', fontSize: 13, fontFamily: 'var(--sans)',
@@ -292,7 +788,9 @@ const dateInputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
 }
 
-/* ---- Page ---- */
+/* ================================================================
+   Page
+   ================================================================ */
 export default function PerformancePage() {
   const [records, setRecords]             = useState<TradeRecord[]>([])
   const [cat, setCat]                     = useState<string>('All')
@@ -303,6 +801,10 @@ export default function PerformancePage() {
   const [draftTo, setDraftTo]             = useState('')
   const [openDrop, setOpenDrop]           = useState<'cat' | 'time' | null>(null)
   const [pendingDelete, setPendingDelete] = useState<number | null>(null)
+
+  /* Open positions */
+  const [openPositions, setOpenPositions] = useState<OpenPosition[]>([])
+  const [showOpenModal, setShowOpenModal] = useState(false)
 
   const catRef         = useRef<HTMLDivElement>(null)
   const timeRef        = useRef<HTMLDivElement>(null)
@@ -332,6 +834,29 @@ export default function PerformancePage() {
       document.removeEventListener('visibilitychange', refresh)
     }
   }, [])
+
+  /* Load open positions on mount */
+  useEffect(() => {
+    setOpenPositions(readOpenPositions())
+  }, [])
+
+  /* Live prices for open positions (5 s interval) */
+  const posPriceSyms = useMemo(
+    () => Array.from(new Set(openPositions.map(p => p.sym))),
+    [openPositions]
+  )
+  const { prices: livePrices } = useLivePrices(posPriceSyms, 5000)
+
+  /* Unrealised P&L */
+  const unrealisedPL = useMemo(() => {
+    return openPositions.reduce((sum, pos) => {
+      const lp = livePrices[pos.sym]?.price
+      if (!lp || lp <= 0) return sum
+      return sum + (pos.side === 'long'
+        ? (lp - pos.entryPrice) * pos.qty
+        : (pos.entryPrice - lp) * pos.qty)
+    }, 0)
+  }, [openPositions, livePrices])
 
   /* Close dropdowns on outside click */
   useEffect(() => {
@@ -380,7 +905,6 @@ export default function PerformancePage() {
     all.splice(originalIdx, 1)
     localStorage.setItem('eq-records', JSON.stringify(all))
     saveUserData('records', all).catch(() => {})
-    /* Rebuild holdings + cash from remaining records */
     const startingCash = getStartingCapital()
     const sorted = [...all].sort((a, b) => a.date.localeCompare(b.date))
     const { holdings, cash } = recalculateHoldings(sorted, startingCash)
@@ -394,7 +918,51 @@ export default function PerformancePage() {
     setPendingDelete(null)
   }
 
-  /* filteredWithIdx keeps original array index so delete targets the right record */
+  /* Position handlers */
+  function handlePositionOpened(data: Omit<OpenPosition, 'id'>) {
+    const pos: OpenPosition = { ...data, id: Date.now().toString() }
+    const next = [...openPositions, pos]
+    setOpenPositions(next)
+    writeOpenPositions(next)
+  }
+
+  function handlePositionClosed(pos: OpenPosition, exitPrice: number, finalPL: number) {
+    const today = new Date().toISOString().split('T')[0]
+    const record: TradeRecord = {
+      type: pos.side === 'long' ? 'BUY' : 'SELL',
+      sym: pos.sym,
+      instrument: pos.instrument,
+      category: pos.category,
+      quantity: pos.qty,
+      price: exitPrice,
+      profit: finalPL,
+      date: today,
+      status: `Closed @ ${inr(exitPrice)}`,
+    }
+    let allRec: TradeRecord[] = []
+    try { allRec = JSON.parse(localStorage.getItem('eq-records') || '[]') } catch {}
+    const updated = [...allRec, record]
+    localStorage.setItem('eq-records', JSON.stringify(updated))
+    setRecords(updated)
+    saveUserData('records', updated).catch(() => {})
+
+    const startingCash = getStartingCapital()
+    const sorted = [...updated].sort((a, b) => a.date.localeCompare(b.date))
+    const { holdings, cash } = recalculateHoldings(sorted, startingCash)
+    saveHoldings(holdings)
+    saveCash(cash)
+    saveUserData('holdings', holdings).catch(() => {})
+    saveUserData('cash', cash).catch(() => {})
+
+    const remaining = openPositions.filter(p => p.id !== pos.id)
+    setOpenPositions(remaining)
+    writeOpenPositions(remaining)
+
+    window.dispatchEvent(new CustomEvent('eq-record-added'))
+    window.dispatchEvent(new Event('storage'))
+  }
+
+  /* filteredWithIdx keeps original array index for delete */
   const filteredWithIdx = useMemo(() => {
     const cutoff = time !== 'custom' ? cutoffForQuick(time) : null
     return records.reduce<Array<{ r: TradeRecord; i: number }>>((acc, r, i) => {
@@ -410,17 +978,16 @@ export default function PerformancePage() {
     }, [])
   }, [records, cat, time, fromDate, toDate])
 
-  const filtered = filteredWithIdx.map(x => x.r)
-
-  /* Summary stats from filtered set */
-  const netPL      = filtered.reduce((s, r) => s + (Number(r.profit) || 0), 0)
-  const realisedPL = filtered.filter(r => r.type === 'SELL' && r.profit > 0).reduce((s, r) => s + r.profit, 0)
+  const filtered    = filteredWithIdx.map(x => x.r)
+  const netPL       = filtered.reduce((s, r) => s + (Number(r.profit) || 0), 0)
+  const realisedPL  = filtered.filter(r => r.type === 'SELL' && r.profit > 0).reduce((s, r) => s + r.profit, 0)
 
   const stats = [
-    { label: 'Net P/L',        val: plStr(netPL),            color: netPL > 0 ? 'var(--gain)' : netPL < 0 ? 'var(--loss)' : '' },
-    { label: 'Realised P/L',   val: plStr(realisedPL),       color: realisedPL > 0 ? 'var(--gain)' : realisedPL < 0 ? 'var(--loss)' : '' },
-    { label: 'Unrealised P/L', val: '₹0',                    color: '', sub: 'Live tracking soon' },
-    { label: 'Trades',         val: String(filtered.length), color: '', sub: `of ${records.length} total` },
+    { label: 'Net P/L',         val: plStr(netPL),           color: netPL > 0 ? 'var(--gain)' : netPL < 0 ? 'var(--loss)' : '' },
+    { label: 'Realised P/L',    val: plStr(realisedPL),      color: realisedPL > 0 ? 'var(--gain)' : realisedPL < 0 ? 'var(--loss)' : '' },
+    { label: 'Unrealised P/L',  val: plStr(unrealisedPL),    color: unrealisedPL > 0 ? 'var(--gain)' : unrealisedPL < 0 ? 'var(--loss)' : '',
+      sub: openPositions.length > 0 ? `${openPositions.length} open position${openPositions.length === 1 ? '' : 's'}` : 'No open positions' },
+    { label: 'Trades',          val: String(filtered.length), color: '', sub: `of ${records.length} total` },
   ]
 
   const catLabel  = cat === 'All' ? 'Category' : cat
@@ -440,11 +1007,18 @@ export default function PerformancePage() {
 
   return (
     <div className="content fade">
+      <style>{`
+        @keyframes livePulse {
+          0%   { box-shadow: 0 0 0 0   rgba(0,154,81,.5); }
+          70%  { box-shadow: 0 0 0 7px rgba(0,154,81,0);  }
+          100% { box-shadow: 0 0 0 0   rgba(0,154,81,0);  }
+        }
+      `}</style>
+
       <div className="page-head">
         <div>
           <div className="crumb">Dashboard <span>·</span> <b>Positions</b></div>
-          <h1></h1>
-          <div className="sub" style={{ marginTop: 2 }}></div>
+          <h1>Positions</h1>
         </div>
       </div>
 
@@ -458,6 +1032,14 @@ export default function PerformancePage() {
           </div>
         ))}
       </div>
+
+      {/* Open Positions Panel */}
+      <OpenPositionsPanel
+        positions={openPositions}
+        livePrices={livePrices}
+        onAdd={() => setShowOpenModal(true)}
+        onPositionClose={handlePositionClosed}
+      />
 
       {/* Filter bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
@@ -614,6 +1196,14 @@ export default function PerformancePage() {
           </div>
         )}
       </div>
+
+      {/* Open Position Modal */}
+      {showOpenModal && (
+        <OpenPositionModal
+          onClose={() => setShowOpenModal(false)}
+          onSave={handlePositionOpened}
+        />
+      )}
     </div>
   )
 }
