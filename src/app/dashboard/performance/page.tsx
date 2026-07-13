@@ -37,6 +37,8 @@ const QUICK_TIMES = ['1W', '1M', '3M', '6M', 'Max'] as const
 type QuickTime = typeof QUICK_TIMES[number]
 type TimeKey   = QuickTime | 'custom'
 const OPEN_POS_KEY = 'eq-open-positions'
+/* Trade log grid — one record per row */
+const LOG_COL = '96px minmax(150px, 1.2fr) 92px 64px 120px minmax(110px, 1fr) 36px'
 
 /* ---- Shared styles ---- */
 const OVERLAY: React.CSSProperties = {
@@ -1376,58 +1378,75 @@ export default function PerformancePage() {
             )}
           </div>
         ) : (
-          <div className="list">
-            {filteredWithIdx.map(({ r, i: origIdx }, dispIdx) => {
-              const up   = r.profit > 0
-              const zero = r.profit === 0
-              return (
-                <div className="lrow" key={dispIdx} style={{ alignItems: 'center', minHeight: 50 }}>
-                  <span style={{ flex: '0 0 108px', fontSize: 13, color: 'var(--muted)', flexShrink: 0 }}>
-                    {fmtDate(r.date)}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <b style={{ fontSize: '13.5px', color: 'var(--ink)' }}>{r.instrument || r.sym}</b>
-                    {r.instrument && r.instrument !== r.sym && (
-                      <div className="muted" style={{ fontSize: 12 }}>{r.sym}</div>
-                    )}
-                  </div>
-                  <span style={{ flex: '0 0 90px', flexShrink: 0, fontSize: 12.5, color: 'var(--muted)' }}>
-                    {r.category || 'Equities'}
-                  </span>
-                  <span style={{ flex: '0 0 72px', flexShrink: 0 }}>
-                    <span className={`txtype ${r.type === 'BUY' ? 'buy' : 'sell'}`}>
-                      {r.type === 'BUY' ? 'CALL' : 'PUT'}
+          <>
+            <div style={{
+              display: 'grid', gridTemplateColumns: LOG_COL, gap: 12,
+              padding: '0 0 8px',
+              fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase' as const,
+              letterSpacing: '.06em', color: 'var(--faint)',
+              borderBottom: '1px solid var(--line)',
+            }}>
+              <span>Date</span>
+              <span>Instrument</span>
+              <span>Category</span>
+              <span>Type</span>
+              <span style={{ textAlign: 'right' }}>P&amp;L</span>
+              <span>Notes</span>
+              <span />
+            </div>
+            <div className="list">
+              {filteredWithIdx.map(({ r, i: origIdx }, dispIdx) => {
+                const up   = r.profit > 0
+                const zero = r.profit === 0
+                return (
+                  <div className="lrow" key={dispIdx} style={{ gridTemplateColumns: LOG_COL, minHeight: 50 }}>
+                    <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' as const }}>
+                      {fmtDate(r.date)}
                     </span>
-                  </span>
-                  <div style={{
-                    flex: '0 0 128px', textAlign: 'right', flexShrink: 0,
-                    fontWeight: 700, fontSize: '13.5px',
-                    color: zero ? 'var(--muted)' : up ? 'var(--gain)' : 'var(--loss)',
-                  }}>
-                    {zero ? '₹0' : `${up ? '+' : '−'}${inr(Math.abs(r.profit))}`}
+                    <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                      <b style={{ fontSize: '13.5px', color: 'var(--ink)' }}>{r.instrument || r.sym}</b>
+                      {r.instrument && r.instrument !== r.sym && (
+                        <span className="muted" style={{ fontSize: 12, marginLeft: 6 }}>{r.sym}</span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+                      {r.category || 'Equities'}
+                    </span>
+                    <span>
+                      <span className={`txtype ${r.type === 'BUY' ? 'buy' : 'sell'}`}>
+                        {r.type === 'BUY' ? 'CALL' : 'PUT'}
+                      </span>
+                    </span>
+                    <div style={{
+                      textAlign: 'right', whiteSpace: 'nowrap' as const,
+                      fontWeight: 700, fontSize: '13.5px',
+                      color: zero ? 'var(--muted)' : up ? 'var(--gain)' : 'var(--loss)',
+                    }}>
+                      {zero ? '₹0' : `${up ? '+' : '−'}${inr(Math.abs(r.profit))}`}
+                    </div>
+                    <div style={{
+                      minWidth: 0, fontSize: 13,
+                      color: 'var(--muted)', overflow: 'hidden',
+                      textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const,
+                    }}>
+                      {r.status || <span style={{ color: 'var(--faint)' }}>—</span>}
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <DelBtn
+                        pending={pendingDelete === dispIdx}
+                        onDelete={() => requestDelete(dispIdx)}
+                        onConfirm={() => confirmDelete(origIdx)}
+                        onCancel={() => {
+                          if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current)
+                          setPendingDelete(null)
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div style={{
-                    flex: 1, paddingLeft: 16, fontSize: 13,
-                    color: 'var(--muted)', overflow: 'hidden',
-                    textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const,
-                  }}>
-                    {r.status || <span style={{ color: 'var(--faint)' }}>—</span>}
-                  </div>
-                  <div style={{ flexShrink: 0, paddingLeft: 8 }}>
-                    <DelBtn
-                      pending={pendingDelete === dispIdx}
-                      onDelete={() => requestDelete(dispIdx)}
-                      onConfirm={() => confirmDelete(origIdx)}
-                      onCancel={() => {
-                        if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current)
-                        setPendingDelete(null)
-                      }}
-                    />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          </>
         )}
       </div>
       </>
