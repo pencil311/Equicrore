@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useSession, getSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { sanitizeString } from '@/lib/sanitize'
+import { localDateISO } from '@/lib/format'
 import '@/styles/dashboard.css'
 import { Sidebar, TopBar } from '@/components/dashboard/DashLayout'
 import { RecordModal } from '@/components/dashboard/DashPanels'
@@ -137,7 +138,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const totalPL    = txns.reduce((s, r) => s + (Number(r.profit) || 0), 0)
   const totalPLpct = portfolioValue > 0 ? (totalPL / portfolioValue) * 100 : 0
 
-  const _today  = new Date().toISOString().split('T')[0]
+  const _today  = localDateISO()
   const todayPL  = txns.filter(r => r.date === _today).reduce((s, r) => s + (Number(r.profit) || 0), 0)
   const todayPct = portfolioValue > 0 ? (todayPL / portfolioValue) * 100 : 0
 

@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import '@/styles/dashboard.css'
 import Link from 'next/link'
-import { inr } from '@/lib/format'
+import { inr, localDateISO } from '@/lib/format'
 import { Ico } from '@/components/dashboard/DashLayout'
 import { type Client, loadClients, saveClients } from '@/lib/clients'
 import { getUserData, saveUserData } from '@/lib/userStorage'
@@ -36,8 +36,8 @@ type QuickDate = 'all' | 'month' | '3m' | 'year' | 'custom'
 function cutoffFor(key: QuickDate): string | null {
   if (key === 'all' || key === 'custom') return null
   const d = new Date()
-  if (key === 'month') return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]
-  if (key === '3m')    { d.setMonth(d.getMonth() - 3); return d.toISOString().split('T')[0] }
+  if (key === 'month') return localDateISO(new Date(d.getFullYear(), d.getMonth(), 1))
+  if (key === '3m')    { d.setMonth(d.getMonth() - 3); return localDateISO(d) }
   if (key === 'year')  return `${d.getFullYear()}-01-01`
   return null
 }
@@ -375,7 +375,7 @@ export default function ClientsPage() {
       id: Date.now().toString(),
       name: name.trim(), phone: phone.trim(), email: email.trim(), notes: notes.trim(),
       clientAmount: parseFloat(clientAmt) || 0,
-      createdAt: new Date().toISOString().split('T')[0],
+      createdAt: localDateISO(),
       entries: [],
     }
     const updated = [...clients, newClient]

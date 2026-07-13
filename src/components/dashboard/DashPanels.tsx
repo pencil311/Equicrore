@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import AreaChart from '@/components/charts/AreaChart'
 import Donut from '@/components/charts/Donut'
 import { useCountUp } from '@/hooks/useCountUp'
-import { inr, inrShort, pct } from '@/lib/format'
+import { inr, inrShort, pct, localDateISO } from '@/lib/format'
 import { perfData, leaderboard, type WatchlistItem } from '@/lib/mockData'
 import { type PortfolioHolding, type TradeRecord } from '@/lib/portfolio'
 import { saveUserData } from '@/lib/userStorage'
@@ -71,18 +71,18 @@ export function PerfPanel({ portfolioValue, records }: PerfPanelProps) {
 
   const periodPL = useMemo(() => {
     const now = new Date()
-    const today = now.toISOString().split('T')[0]
+    const today = localDateISO(now)
     let filtered = records
     if (tf === '1D') {
       filtered = records.filter(r => r.date === today)
     } else if (tf === '1W') {
-      const cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      const cutoff = localDateISO(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000))
       filtered = records.filter(r => r.date >= cutoff)
     } else if (tf === '1M') {
-      const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      const cutoff = localDateISO(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000))
       filtered = records.filter(r => r.date >= cutoff)
     } else if (tf === '1Y') {
-      const cutoff = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      const cutoff = localDateISO(new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000))
       filtered = records.filter(r => r.date >= cutoff)
     }
     return filtered.reduce((sum, r) => sum + (Number(r.profit) || 0), 0)
@@ -247,8 +247,8 @@ export function WatchlistPanel({ items, onTrade }: WatchlistPanelProps) {
 
 /* ---- TransactionsPanel ---- */
 function fmtDate(iso: string) {
-  const today = new Date().toISOString().split('T')[0]
-  const yest  = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+  const today = localDateISO()
+  const yest  = localDateISO(new Date(Date.now() - 86400000))
   if (iso === today) return 'Today'
   if (iso === yest)  return 'Yesterday'
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
@@ -348,7 +348,7 @@ export function RecordModal({ open, sym, name, color, onClose, onSubmit }: Recor
 
   useEffect(() => {
     if (open) {
-      setDate(new Date().toISOString().split('T')[0])
+      setDate(localDateISO())
       setType('BUY')
       setQuantity('')
       setPrice('')

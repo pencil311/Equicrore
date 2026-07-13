@@ -37,6 +37,15 @@ export function pct(n: number): string {
   return (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(2) + '%'
 }
 
+/** Local calendar date as YYYY-MM-DD (never UTC — a trade recorded at
+ *  1 AM IST must count as the IST day, not the UTC one). */
+export function localDateISO(d: Date = new Date()): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 /** Format large numbers compactly for axis labels */
 export function shortNum(n: number): string {
   if (n >= 10_000_000) return (n / 10_000_000).toFixed(1) + 'Cr'

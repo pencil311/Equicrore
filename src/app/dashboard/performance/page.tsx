@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
-import { inr } from '@/lib/format'
+import { inr, localDateISO } from '@/lib/format'
 import { Ico } from '@/components/dashboard/DashLayout'
 import type { TradeRecord } from '@/lib/portfolio'
 import { recalculateHoldings, saveHoldings, saveCash, getStartingCapital } from '@/lib/portfolio'
@@ -89,8 +89,8 @@ async function fetchLivePrice(sym: string): Promise<number | null> {
 
 function fmtDate(iso: string) {
   if (!iso) return '—'
-  const today = new Date().toISOString().split('T')[0]
-  const yest  = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+  const today = localDateISO()
+  const yest  = localDateISO(new Date(Date.now() - 86400000))
   if (iso === today) return 'Today'
   if (iso === yest)  return 'Yesterday'
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -101,7 +101,7 @@ function cutoffForQuick(key: QuickTime): string | null {
   const days: Record<QuickTime, number> = { '1W': 7, '1M': 30, '3M': 90, '6M': 180, 'Max': 0 }
   const d = new Date()
   d.setDate(d.getDate() - days[key])
-  return d.toISOString().split('T')[0]
+  return localDateISO(d)
 }
 
 function plStr(val: number) {
@@ -547,7 +547,7 @@ const OpenPositionModal = memo(function OpenPositionModal({ onClose, onSave }: {
         side,
         qty: Number(qty),
         entryPrice: Number(entryPrice),
-        openedAt: new Date().toISOString().split('T')[0],
+        openedAt: localDateISO(),
         category: cat,
       })
       onClose()
@@ -709,7 +709,7 @@ const RecordTradeModal = memo(function RecordTradeModal({ initial, onClose, onSa
   const [qty, setQty]               = useState(initial?.quantity ? String(initial.quantity) : '')
   const [price, setPrice]           = useState(initial?.price ? String(initial.price) : '')
   const [profit, setProfit]         = useState(initial?.profit ? String(initial.profit) : '')
-  const [date, setDate]             = useState(() => initial?.date ?? new Date().toISOString().split('T')[0])
+  const [date, setDate]             = useState(() => initial?.date ?? localDateISO())
   const [cat, setCat]               = useState(initial?.category || 'Equities')
   const [status, setStatus]         = useState(initial?.status ?? '')
   const [error, setError]           = useState('')
@@ -1144,7 +1144,7 @@ export default function PerformancePage() {
   }, [])
 
   function handlePositionClosed(pos: OpenPosition, exitPrice: number, finalPL: number) {
-    const today = new Date().toISOString().split('T')[0]
+    const today = localDateISO()
     const record: TradeRecord = {
       type: pos.side === 'long' ? 'BUY' : 'SELL',
       sym: pos.sym,
@@ -1211,7 +1211,7 @@ export default function PerformancePage() {
   const timeLabel = time === 'custom' ? 'Custom' : time === 'Max' ? 'All time' : time
 
   function downloadReport() {
-    const dateStr = new Date().toISOString().split('T')[0]
+    const dateStr = localDateISO()
     const html    = buildHTML(filtered, netPL, realisedPL, cat, time, timeLabel, fromDate, toDate)
     const blob    = new Blob([html], { type: 'text/html' })
     const url     = URL.createObjectURL(blob)

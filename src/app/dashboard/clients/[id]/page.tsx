@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import '@/styles/dashboard.css'
-import { inr } from '@/lib/format'
+import { inr, localDateISO } from '@/lib/format'
 import { Ico } from '@/components/dashboard/DashLayout'
 import { type Client, type ClientEntry, loadClients, updateClient } from '@/lib/clients'
 import { getUserData, saveUserData } from '@/lib/userStorage'
@@ -45,8 +45,8 @@ function fmtDate(iso: string) {
 function cutoffFor(key: QuickTime): string | null {
   if (key === 'All') return null
   const d = new Date()
-  if (key === 'This Month') return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]
-  if (key === 'Last 3M')    { d.setMonth(d.getMonth() - 3); return d.toISOString().split('T')[0] }
+  if (key === 'This Month') return localDateISO(new Date(d.getFullYear(), d.getMonth(), 1))
+  if (key === 'Last 3M')    { d.setMonth(d.getMonth() - 3); return localDateISO(d) }
   if (key === 'This Year')  return `${d.getFullYear()}-01-01`
   return null
 }
@@ -332,7 +332,7 @@ export default function ClientDetailPage() {
   /* ---- Handlers ---- */
 
   function openAdd() {
-    setEntryDate(new Date().toISOString().split('T')[0])
+    setEntryDate(localDateISO())
     setAmount(''); setEntryMarket(''); setEntryNotes(''); setDone(false)
     setAddOpen(true)
   }
@@ -342,7 +342,7 @@ export default function ClientDetailPage() {
     if (!amt || amt <= 0 || !client) return
     const entry: ClientEntry = {
       id: Date.now().toString(),
-      date: entryDate || new Date().toISOString().split('T')[0],
+      date: entryDate || localDateISO(),
       amount: amt, market: entryMarket, notes: entryNotes.trim(),
       createdAt: new Date().toISOString(),
     }
@@ -569,7 +569,7 @@ export default function ClientDetailPage() {
 </body>
 </html>`
 
-    const dateStr = new Date().toISOString().split('T')[0]
+    const dateStr = localDateISO()
     const blob    = new Blob([html], { type: 'text/html' })
     const url     = URL.createObjectURL(blob)
     const a       = document.createElement('a')
