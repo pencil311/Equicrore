@@ -7,6 +7,7 @@ import { recalculateHoldings, saveHoldings, saveCash, getStartingCapital } from 
 import { getUserData, saveUserData } from '@/lib/userStorage'
 import { allSymbols, type WatchSymbol } from '@/lib/watchlists'
 import { useLivePrices, type LivePrice } from '@/hooks/useLivePrices'
+import { brokerKeys, getActiveBroker } from '@/lib/brokers'
 
 /* ---- Icons ---- */
 const JOURNAL_ICON  = 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z'
@@ -678,6 +679,132 @@ function CloseModal({ pos, livePrice, onClose, onConfirm }: {
   )
 }
 
+/* ---- Record Trade Modal — same template as Open Position ---- */
+const RecordTradeModal = memo(function RecordTradeModal({ onClose, onSave }: {
+  onClose: () => void
+  onSave: (rec: TradeRecord) => void
+}) {
+  const [instrument, setInstrument] = useState<WatchSymbol | null>(null)
+  const [type, setType]             = useState<'BUY' | 'SELL'>('BUY')
+  const [qty, setQty]               = useState('')
+  const [price, setPrice]           = useState('')
+  const [profit, setProfit]         = useState('')
+  const [date, setDate]             = useState(() => new Date().toISOString().split('T')[0])
+  const [cat, setCat]               = useState('Equities')
+  const [status, setStatus]         = useState('')
+  const [error, setError]           = useState('')
+
+  const profitNum = Number(profit) || 0
+
+  const typeBtn = (t: 'BUY' | 'SELL', label: string, col: string) => (
+    <button
+      type="button"
+      onClick={() => setType(t)}
+      style={{
+        flex: 1, padding: '8px 0', borderRadius: 'var(--r-sm)',
+        border: `1.5px solid ${type === t ? col : 'var(--line)'}`,
+        background: type === t ? col : 'transparent',
+        color: type === t ? '#fff' : 'var(--ink)',
+        fontWeight: 600, fontSize: 13.5, fontFamily: 'var(--sans)', cursor: 'pointer',
+        transition: 'all .13s',
+      }}
+    >{label}</button>
+  )
+
+  function submit() {
+    if (!instrument) { setError('Please select an instrument'); return }
+    if (!date) { setError('Please pick a date'); return }
+    onSave({
+      sym: toPriceSym(instrument.sym),
+      instrument: instrument.name,
+      category: cat,
+      type,
+      quantity: Number(qty) || 0,
+      price: Number(price) || 0,
+      profit: profitNum,
+      date, status,
+    })
+    onClose()
+  }
+
+  return (
+    <ModalShell title="Record Trade" onClose={onClose}>
+      <div style={{ padding: '4px 22px 18px' }}>
+        <label style={labelStyle}>Instrument</label>
+        <InstrumentPicker value={instrument} onChange={v => { setInstrument(v); setError('') }} />
+
+        <label style={labelStyle}>Type</label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {typeBtn('BUY',  'Call / Buy',  'var(--green)')}
+          {typeBtn('SELL', 'Put / Sell', '#d94f4f')}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <label style={labelStyle}>Quantity</label>
+            <input
+              type="number" min="0" value={qty}
+              onChange={e => setQty(e.target.value)}
+              placeholder="0" style={fieldStyle}
+            />
+          </div>
+          <div style={{ flex: 1.4 }}>
+            <label style={labelStyle}>Price per unit (₹)</label>
+            <input
+              type="number" min="0" value={price}
+              onChange={e => setPrice(e.target.value)}
+              placeholder="0.00" style={fieldStyle}
+            />
+          </div>
+        </div>
+
+        <label style={labelStyle}>Profit / Loss (₹)</label>
+        <input
+          type="number" value={profit}
+          onChange={e => setProfit(e.target.value)}
+          placeholder="Positive for profit, negative for loss"
+          style={{
+            ...fieldStyle,
+            fontWeight: 600,
+            color: profitNum > 0 ? 'var(--gain)' : profitNum < 0 ? 'var(--loss)' : 'var(--ink)',
+          }}
+        />
+
+        <label style={labelStyle}>Date</label>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} style={fieldStyle} />
+
+        <label style={labelStyle}>Category</label>
+        <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
+          {POS_CATS.map(c => (
+            <Chip key={c} label={c} active={cat === c} onClick={() => setCat(c)} />
+          ))}
+        </div>
+
+        <label style={labelStyle}>Status / Notes</label>
+        <input
+          value={status}
+          onChange={e => setStatus(e.target.value)}
+          placeholder="e.g. Booked profit, Stop loss hit…"
+          style={fieldStyle}
+        />
+      </div>
+      {error && (
+        <div style={{ margin: '0 22px 14px', padding: '8px 12px', background: 'rgba(217,79,79,.08)', border: '1px solid rgba(217,79,79,.25)', borderRadius: 6, color: '#d94f4f', fontSize: 13 }}>
+          {error}
+        </div>
+      )}
+      <div style={{ padding: '14px 22px', borderTop: '1px solid var(--line)', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        <button
+          className="btn btn-solid"
+          onClick={submit}
+          disabled={!instrument || !date}
+        >Record Trade</button>
+      </div>
+    </ModalShell>
+  )
+})
+
 /* ---- Open Positions Panel ---- */
 function OpenPositionsPanel({ positions, livePrices, onAdd, onPositionClose }: {
   positions: OpenPosition[]
@@ -825,6 +952,10 @@ export default function PerformancePage() {
   const [openPositions, setOpenPositions] = useState<OpenPosition[]>([])
   const [showOpenModal, setShowOpenModal] = useState(false)
 
+  /* View tab + record trade modal */
+  const [view, setView]                       = useState<'positions' | 'log'>('positions')
+  const [showRecordModal, setShowRecordModal] = useState(false)
+
   const catRef         = useRef<HTMLDivElement>(null)
   const timeRef        = useRef<HTMLDivElement>(null)
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -864,8 +995,8 @@ export default function PerformancePage() {
     () => Array.from(new Set(openPositions.map(p => p.sym))),
     [openPositions]
   )
-  /* Pause polling while the modal is open so it can't interfere with form state */
-  const { prices: livePrices } = useLivePrices(showOpenModal ? [] : posPriceSyms, 5000)
+  /* Pause polling while a modal is open so it can't interfere with form state */
+  const { prices: livePrices } = useLivePrices((showOpenModal || showRecordModal) ? [] : posPriceSyms, 5000)
 
   /* Unrealised P&L */
   const unrealisedPL = useMemo(() => {
@@ -939,7 +1070,39 @@ export default function PerformancePage() {
   }
 
   /* Stable modal callbacks — useCallback so memo(OpenPositionModal) doesn't re-render on price ticks */
-  const handleModalClose = useCallback(() => setShowOpenModal(false), [])
+  const handleModalClose  = useCallback(() => setShowOpenModal(false), [])
+  const handleRecordClose = useCallback(() => setShowRecordModal(false), [])
+
+  /* The dashboard reads broker-scoped records for Today's P/L — keep that store in sync */
+  function appendToBrokerRecords(record: TradeRecord) {
+    try {
+      const key = brokerKeys(getActiveBroker()).records
+      const arr: TradeRecord[] = JSON.parse(localStorage.getItem(key) || '[]')
+      arr.unshift(record)
+      localStorage.setItem(key, JSON.stringify(arr))
+    } catch {}
+  }
+
+  const handleTradeRecorded = useCallback((record: TradeRecord) => {
+    let allRec: TradeRecord[] = []
+    try { allRec = JSON.parse(localStorage.getItem('eq-records') || '[]') } catch {}
+    const updated = [record, ...allRec]
+    localStorage.setItem('eq-records', JSON.stringify(updated))
+    setRecords(updated)
+    saveUserData('records', updated).catch(() => {})
+    appendToBrokerRecords(record)
+
+    const startingCash = getStartingCapital()
+    const sorted = [...updated].sort((a, b) => a.date.localeCompare(b.date))
+    const { holdings, cash } = recalculateHoldings(sorted, startingCash)
+    saveHoldings(holdings)
+    saveCash(cash)
+    saveUserData('holdings', holdings).catch(() => {})
+    saveUserData('cash', cash).catch(() => {})
+
+    window.dispatchEvent(new CustomEvent('eq-record-added'))
+    window.dispatchEvent(new Event('storage'))
+  }, [])
 
   const handlePositionOpened = useCallback((data: Omit<OpenPosition, 'id'>) => {
     const pos: OpenPosition = { ...data, id: Date.now().toString() }
@@ -969,6 +1132,7 @@ export default function PerformancePage() {
     localStorage.setItem('eq-records', JSON.stringify(updated))
     setRecords(updated)
     saveUserData('records', updated).catch(() => {})
+    appendToBrokerRecords(record)
 
     const startingCash = getStartingCapital()
     const sorted = [...updated].sort((a, b) => a.date.localeCompare(b.date))
@@ -1057,14 +1221,50 @@ export default function PerformancePage() {
         ))}
       </div>
 
-      {/* Open Positions Panel */}
-      <OpenPositionsPanel
-        positions={openPositions}
-        livePrices={livePrices}
-        onAdd={() => setShowOpenModal(true)}
-        onPositionClose={handlePositionClosed}
-      />
+      {/* View tabs */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+        {([
+          ['positions', 'Open Positions', openPositions.length],
+          ['log', 'Trade Log', records.length],
+        ] as const).map(([key, label, count]) => {
+          const active = view === key
+          return (
+            <button
+              key={key}
+              onClick={() => setView(key)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '9px 20px', borderRadius: 100,
+                border: `1.5px solid ${active ? 'var(--green)' : 'var(--line)'}`,
+                background: active ? 'var(--green)' : 'var(--paper)',
+                color: active ? '#fff' : 'var(--muted)',
+                fontWeight: 600, fontSize: 13.5, fontFamily: 'var(--sans)',
+                cursor: 'pointer', transition: 'all .18s var(--ease)',
+              }}
+            >
+              {label}
+              <span style={{
+                padding: '1px 8px', borderRadius: 100, fontSize: 11.5, fontWeight: 700,
+                background: active ? 'rgba(255,255,255,.22)' : 'var(--bg)',
+                color: active ? '#fff' : 'var(--faint)',
+              }}>{count}</span>
+            </button>
+          )
+        })}
+      </div>
 
+      {/* Open Positions Panel */}
+      {view === 'positions' && (
+        <OpenPositionsPanel
+          positions={openPositions}
+          livePrices={livePrices}
+          onAdd={() => setShowOpenModal(true)}
+          onPositionClose={handlePositionClosed}
+        />
+      )}
+
+      {view === 'log' && (
+      <>
       {/* Filter bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
 
@@ -1139,15 +1339,20 @@ export default function PerformancePage() {
       {/* Trade log */}
       <div className="panel">
         <div className="panel-head">
-          <h3>Trade log</h3>
-          <span className="sub">
-            {filtered.length} {filtered.length === 1 ? 'entry' : 'entries'}
-            {(cat !== 'All' || time !== 'Max') && (
-              <span style={{ marginLeft: 6, color: 'var(--faint)' }}>
-                {[cat !== 'All' ? cat : '', time !== 'Max' ? (time === 'custom' ? 'custom range' : time) : ''].filter(Boolean).join(' · ')}
-              </span>
-            )}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h3>Trade log</h3>
+            <span className="sub">
+              {filtered.length} {filtered.length === 1 ? 'entry' : 'entries'}
+              {(cat !== 'All' || time !== 'Max') && (
+                <span style={{ marginLeft: 6, color: 'var(--faint)' }}>
+                  {[cat !== 'All' ? cat : '', time !== 'Max' ? (time === 'custom' ? 'custom range' : time) : ''].filter(Boolean).join(' · ')}
+                </span>
+              )}
+            </span>
+          </div>
+          <button className="btn btn-solid btn-mini" style={{ gap: 5 }} onClick={() => setShowRecordModal(true)}>
+            <Ico d={PLUS_ICON} s={13} /> Record Trade
+          </button>
         </div>
 
         {filtered.length === 0 ? (
@@ -1161,9 +1366,14 @@ export default function PerformancePage() {
             </div>
             <div style={{ fontSize: 13, color: 'var(--faint)', textAlign: 'center', maxWidth: 280 }}>
               {records.length === 0
-                ? 'Click Record on any asset to log your first trade'
+                ? 'Record a trade to start building your log'
                 : 'Try a different category or time range'}
             </div>
+            {records.length === 0 && (
+              <button className="btn btn-solid btn-mini" style={{ gap: 5, marginTop: 6 }} onClick={() => setShowRecordModal(true)}>
+                <Ico d={PLUS_ICON} s={13} /> Record Trade
+              </button>
+            )}
           </div>
         ) : (
           <div className="list">
@@ -1220,12 +1430,22 @@ export default function PerformancePage() {
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* Open Position Modal */}
       {showOpenModal && (
         <OpenPositionModal
           onClose={handleModalClose}
           onSave={handlePositionOpened}
+        />
+      )}
+
+      {/* Record Trade Modal */}
+      {showRecordModal && (
+        <RecordTradeModal
+          onClose={handleRecordClose}
+          onSave={handleTradeRecorded}
         />
       )}
     </div>
