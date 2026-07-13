@@ -7,7 +7,6 @@ import { inr, inrShort, pct } from '@/lib/format'
 import { perfData, leaderboard, type WatchlistItem } from '@/lib/mockData'
 import { type PortfolioHolding, type TradeRecord } from '@/lib/portfolio'
 import { saveUserData } from '@/lib/userStorage'
-import { brokerKeys, getActiveBroker } from '@/lib/brokers'
 import { Ico } from './DashLayout'
 
 const I = {
@@ -332,12 +331,11 @@ interface RecordModalProps {
   sym: string
   name: string
   color: string
-  recordKey?: string
   onClose: () => void
   onSubmit: (record: TradeRecord) => void
 }
 
-export function RecordModal({ open, sym, name, color, recordKey, onClose, onSubmit }: RecordModalProps) {
+export function RecordModal({ open, sym, name, color, onClose, onSubmit }: RecordModalProps) {
   const [date, setDate]             = useState('')
   const [type, setType]             = useState<'BUY' | 'SELL'>('BUY')
   const [quantity, setQuantity]     = useState('')
@@ -379,18 +377,10 @@ export function RecordModal({ open, sym, name, color, recordKey, onClose, onSubm
       profit: profitNum, date, status,
     }
     try {
-      const key = recordKey ?? brokerKeys(getActiveBroker()).records
-      const existing: TradeRecord[] = JSON.parse(localStorage.getItem(key) || '[]')
+      const existing: TradeRecord[] = JSON.parse(localStorage.getItem('eq-records') || '[]')
       existing.unshift(record)
-      localStorage.setItem(key, JSON.stringify(existing))
-      // The performance page and MongoDB sync read the aggregate 'eq-records' store
-      let all = existing
-      if (key !== 'eq-records') {
-        all = JSON.parse(localStorage.getItem('eq-records') || '[]')
-        all.unshift(record)
-        localStorage.setItem('eq-records', JSON.stringify(all))
-      }
-      saveUserData('records', all).catch(() => {})
+      localStorage.setItem('eq-records', JSON.stringify(existing))
+      saveUserData('records', existing).catch(() => {})
       window.dispatchEvent(new CustomEvent('eq-record-added'))
       window.dispatchEvent(new Event('storage'))
     } catch {}

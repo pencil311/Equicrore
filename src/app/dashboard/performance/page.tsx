@@ -7,7 +7,6 @@ import { recalculateHoldings, saveHoldings, saveCash, getStartingCapital } from 
 import { getUserData, saveUserData } from '@/lib/userStorage'
 import { allSymbols, type WatchSymbol } from '@/lib/watchlists'
 import { useLivePrices, type LivePrice } from '@/hooks/useLivePrices'
-import { brokerKeys, getActiveBroker } from '@/lib/brokers'
 
 /* ---- Icons ---- */
 const JOURNAL_ICON  = 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z'
@@ -1095,16 +1094,6 @@ export default function PerformancePage() {
   const handleModalClose  = useCallback(() => setShowOpenModal(false), [])
   const handleRecordClose = useCallback(() => setShowRecordModal(false), [])
 
-  /* The dashboard reads broker-scoped records for Today's P/L — keep that store in sync */
-  function appendToBrokerRecords(record: TradeRecord) {
-    try {
-      const key = brokerKeys(getActiveBroker()).records
-      const arr: TradeRecord[] = JSON.parse(localStorage.getItem(key) || '[]')
-      arr.unshift(record)
-      localStorage.setItem(key, JSON.stringify(arr))
-    } catch {}
-  }
-
   const handleTradeRecorded = useCallback((record: TradeRecord) => {
     let allRec: TradeRecord[] = []
     try { allRec = JSON.parse(localStorage.getItem('eq-records') || '[]') } catch {}
@@ -1112,7 +1101,6 @@ export default function PerformancePage() {
     localStorage.setItem('eq-records', JSON.stringify(updated))
     setRecords(updated)
     saveUserData('records', updated).catch(() => {})
-    appendToBrokerRecords(record)
 
     const startingCash = getStartingCapital()
     const sorted = [...updated].sort((a, b) => a.date.localeCompare(b.date))
@@ -1133,18 +1121,6 @@ export default function PerformancePage() {
     localStorage.setItem('eq-records', JSON.stringify(updated))
     setRecords(updated)
     saveUserData('records', updated).catch(() => {})
-
-    /* Update the broker-scoped copy the dashboard reads */
-    try {
-      const key = brokerKeys(getActiveBroker()).records
-      const arr: TradeRecord[] = JSON.parse(localStorage.getItem(key) || '[]')
-      const match = JSON.stringify(oldRec)
-      const i = arr.findIndex(r => JSON.stringify(r) === match)
-      if (i !== -1) {
-        arr[i] = newRec
-        localStorage.setItem(key, JSON.stringify(arr))
-      }
-    } catch {}
 
     const startingCash = getStartingCapital()
     const sorted = [...updated].sort((a, b) => a.date.localeCompare(b.date))
@@ -1186,7 +1162,6 @@ export default function PerformancePage() {
     localStorage.setItem('eq-records', JSON.stringify(updated))
     setRecords(updated)
     saveUserData('records', updated).catch(() => {})
-    appendToBrokerRecords(record)
 
     const startingCash = getStartingCapital()
     const sorted = [...updated].sort((a, b) => a.date.localeCompare(b.date))

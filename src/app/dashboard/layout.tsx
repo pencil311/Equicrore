@@ -78,8 +78,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           localStorage.setItem('eq-holdings-dhan', JSON.stringify(data.holdings))
         if (!localStorage.getItem('eq-cash-dhan'))
           localStorage.setItem('eq-cash-dhan', JSON.stringify(data.cash))
-        if (!localStorage.getItem('eq-records-dhan'))
-          localStorage.setItem('eq-records-dhan', JSON.stringify(data.records))
+        /* Trade records live in the single 'eq-records' store (same one the Positions page manages) */
+        if (Array.isArray(data.records) && data.records.length > 0 && !localStorage.getItem('eq-records'))
+          localStorage.setItem('eq-records', JSON.stringify(data.records))
         localStorage.setItem('eq-starting-capital', JSON.stringify(data.startingCapital))
         localStorage.setItem('eq-clients',          JSON.stringify(data.clients))
       }
@@ -87,7 +88,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       const keys = brokerKeys(cur)
       setHoldings(readLS(keys.holdings, []))
       setCash(readLS(keys.cash, 0))
-      setTxns(readLS(keys.records, []))
+      setTxns(readLS('eq-records', []))
       setStartingCapital(data.startingCapital)
       setClientsTotal(data.clients.reduce((s: number, c: any) => s + (c.clientAmount || 0), 0))
     })
@@ -100,7 +101,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const keys = brokerKeys(activeBroker)
     setHoldings(readLS(keys.holdings, []))
     setCash(readLS(keys.cash, 0))
-    setTxns(readLS(keys.records, []))
   }, [activeBroker])
 
   /* Refresh state from localStorage when any component writes a record */
@@ -109,7 +109,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       const keys = brokerKeys(activeBrokerRef.current)
       setHoldings(readLS(keys.holdings, []))
       setCash(readLS(keys.cash, 0))
-      setTxns(readLS(keys.records, []))
+      setTxns(readLS('eq-records', []))
       setStartingCapital(readLS<number>('eq-starting-capital', 0))
       setClientsTotal(readLS<any[]>('eq-clients', []).reduce((s: number, c: any) => s + (c.clientAmount || 0), 0))
     }
@@ -377,7 +377,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         sym={modal.asset?.sym ?? ''}
         name={modal.asset?.name ?? ''}
         color={modal.asset?.color ?? 'var(--green)'}
-        recordKey={brokerKeys(activeBroker).records}
         onClose={() => setModal({ open: false, asset: null })}
         onSubmit={doRecord}
       />
