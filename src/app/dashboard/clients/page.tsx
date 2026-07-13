@@ -636,7 +636,7 @@ export default function ClientsPage() {
       )}
 
       {/* Add Client Modal */}
-      <div className={`ov${addOpen ? ' show' : ''}`} onClick={e => { if (e.target === e.currentTarget && !done) setAddOpen(false) }}>
+      <div className={`ov${addOpen ? ' show' : ''}`}>
         <div className="modal" style={{ width: 440 }} onClick={e => e.stopPropagation()}>
           {done ? (
             <div className="modal-body">

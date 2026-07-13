@@ -400,7 +400,7 @@ export function RecordModal({ open, sym, name, color, recordKey, onClose, onSubm
   }
 
   return (
-    <div className={`ov${open ? ' show' : ''}`} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className={`ov${open ? ' show' : ''}`}>
       <div className="modal">
         {done ? (
           <div className="modal-body">

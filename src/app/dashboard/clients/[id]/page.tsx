@@ -986,7 +986,7 @@ export default function ClientDetailPage() {
       </div>
 
       {/* Add Entry Modal */}
-      <div className={`ov${addOpen ? ' show' : ''}`} onClick={e => { if (e.target === e.currentTarget && !done) setAddOpen(false) }}>
+      <div className={`ov${addOpen ? ' show' : ''}`}>
         <div className="modal" style={{ width: 400 }} onClick={e => e.stopPropagation()}>
           {done ? (
             <div className="modal-body">
@@ -1054,7 +1054,7 @@ export default function ClientDetailPage() {
       </div>
 
       {/* Edit Entry Modal */}
-      <div className={`ov${editOpen ? ' show' : ''}`} onClick={e => { if (e.target === e.currentTarget && !editDone) setEditOpen(false) }}>
+      <div className={`ov${editOpen ? ' show' : ''}`}>
         <div className="modal" style={{ width: 400 }} onClick={e => e.stopPropagation()}>
           {editDone ? (
             <div className="modal-body">

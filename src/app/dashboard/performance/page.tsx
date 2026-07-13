@@ -15,6 +15,7 @@ const CHEVRON       = 'M6 9l6 6 6-6'
 const DOWNLOAD_ICON = 'M12 15V3M12 15l-4-4M12 15l4-4M3 19h18'
 const TRASH_ICON    = 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6'
 const PLUS_ICON     = 'M12 5v14M5 12h14'
+const EDIT_ICON     = 'M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z'
 const CLOSE_ICON    = 'M18 6L6 18M6 6l12 12'
 
 /* ---- Types ---- */
@@ -38,7 +39,7 @@ type QuickTime = typeof QUICK_TIMES[number]
 type TimeKey   = QuickTime | 'custom'
 const OPEN_POS_KEY = 'eq-open-positions'
 /* Trade log grid — one record per row */
-const LOG_COL = '96px minmax(150px, 1.2fr) 92px 64px 120px minmax(110px, 1fr) 36px'
+const LOG_COL = '96px minmax(150px, 1.2fr) 92px 64px 120px minmax(110px, 1fr) 64px'
 
 /* ---- Shared styles ---- */
 const OVERLAY: React.CSSProperties = {
@@ -310,6 +311,26 @@ function DropPanel({ children }: { children: React.ReactNode }) {
   )
 }
 
+/* ---- EditBtn ---- */
+function EditBtn({ onClick }: { onClick: () => void }) {
+  const [hov, setHov] = useState(false)
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        background: 'none', border: 'none', cursor: 'pointer',
+        padding: 4, borderRadius: 4, display: 'flex', alignItems: 'center',
+        color: hov ? 'var(--green)' : 'var(--faint)',
+        transition: 'color 0.13s',
+      }}
+    >
+      <Ico d={EDIT_ICON} s={14} />
+    </button>
+  )
+}
+
 /* ---- DelBtn ---- */
 function DelBtn({ pending, onDelete, onConfirm, onCancel }: {
   pending: boolean
@@ -471,14 +492,8 @@ function ModalShell({ title, onClose, maxWidth = 460, children }: {
   maxWidth?: number
   children: React.ReactNode
 }) {
-  useEffect(() => {
-    function h(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', h)
-    return () => document.removeEventListener('keydown', h)
-  }, [onClose])
-
   return (
-    <div style={OVERLAY} onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div style={OVERLAY}>
       <div style={{ ...MODAL, maxWidth }}>
         <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h3>
@@ -681,19 +696,23 @@ function CloseModal({ pos, livePrice, onClose, onConfirm }: {
   )
 }
 
-/* ---- Record Trade Modal — same template as Open Position ---- */
-const RecordTradeModal = memo(function RecordTradeModal({ onClose, onSave }: {
+/* ---- Record Trade Modal — same template as Open Position; pass `initial` to edit ---- */
+const RecordTradeModal = memo(function RecordTradeModal({ initial, onClose, onSave }: {
+  initial?: TradeRecord
   onClose: () => void
   onSave: (rec: TradeRecord) => void
 }) {
-  const [instrument, setInstrument] = useState<WatchSymbol | null>(null)
-  const [type, setType]             = useState<'BUY' | 'SELL'>('BUY')
-  const [qty, setQty]               = useState('')
-  const [price, setPrice]           = useState('')
-  const [profit, setProfit]         = useState('')
-  const [date, setDate]             = useState(() => new Date().toISOString().split('T')[0])
-  const [cat, setCat]               = useState('Equities')
-  const [status, setStatus]         = useState('')
+  const [instrument, setInstrument] = useState<WatchSymbol | null>(() => initial
+    ? (allSymbols.find(s => s.name === initial.instrument || toPriceSym(s.sym) === initial.sym)
+       ?? { sym: initial.sym, name: initial.instrument || initial.sym, category: initial.category })
+    : null)
+  const [type, setType]             = useState<'BUY' | 'SELL'>(initial?.type ?? 'BUY')
+  const [qty, setQty]               = useState(initial?.quantity ? String(initial.quantity) : '')
+  const [price, setPrice]           = useState(initial?.price ? String(initial.price) : '')
+  const [profit, setProfit]         = useState(initial?.profit ? String(initial.profit) : '')
+  const [date, setDate]             = useState(() => initial?.date ?? new Date().toISOString().split('T')[0])
+  const [cat, setCat]               = useState(initial?.category || 'Equities')
+  const [status, setStatus]         = useState(initial?.status ?? '')
   const [error, setError]           = useState('')
 
   const profitNum = Number(profit) || 0
@@ -730,7 +749,7 @@ const RecordTradeModal = memo(function RecordTradeModal({ onClose, onSave }: {
   }
 
   return (
-    <ModalShell title="Record Trade" onClose={onClose}>
+    <ModalShell title={initial ? 'Edit Trade' : 'Record Trade'} onClose={onClose}>
       <div style={{ padding: '4px 22px 18px' }}>
         <label style={labelStyle}>Instrument</label>
         <InstrumentPicker value={instrument} onChange={v => { setInstrument(v); setError('') }} />
@@ -801,7 +820,7 @@ const RecordTradeModal = memo(function RecordTradeModal({ onClose, onSave }: {
           className="btn btn-solid"
           onClick={submit}
           disabled={!instrument || !date}
-        >Record Trade</button>
+        >{initial ? 'Save Changes' : 'Record Trade'}</button>
       </div>
     </ModalShell>
   )
@@ -957,6 +976,7 @@ export default function PerformancePage() {
   /* View tab + record trade modal */
   const [view, setView]                       = useState<'positions' | 'log'>('positions')
   const [showRecordModal, setShowRecordModal] = useState(false)
+  const [editTrade, setEditTrade]             = useState<{ record: TradeRecord; idx: number } | null>(null)
 
   const catRef         = useRef<HTMLDivElement>(null)
   const timeRef        = useRef<HTMLDivElement>(null)
@@ -998,7 +1018,7 @@ export default function PerformancePage() {
     [openPositions]
   )
   /* Pause polling while a modal is open so it can't interfere with form state */
-  const { prices: livePrices } = useLivePrices((showOpenModal || showRecordModal) ? [] : posPriceSyms, 5000)
+  const { prices: livePrices } = useLivePrices((showOpenModal || showRecordModal || editTrade) ? [] : posPriceSyms, 5000)
 
   /* Unrealised P&L */
   const unrealisedPL = useMemo(() => {
@@ -1105,6 +1125,38 @@ export default function PerformancePage() {
     window.dispatchEvent(new CustomEvent('eq-record-added'))
     window.dispatchEvent(new Event('storage'))
   }, [])
+
+  function handleTradeEdited(idx: number, oldRec: TradeRecord, newRec: TradeRecord) {
+    if (idx < 0 || idx >= records.length) return
+    const updated = [...records]
+    updated[idx] = newRec
+    localStorage.setItem('eq-records', JSON.stringify(updated))
+    setRecords(updated)
+    saveUserData('records', updated).catch(() => {})
+
+    /* Update the broker-scoped copy the dashboard reads */
+    try {
+      const key = brokerKeys(getActiveBroker()).records
+      const arr: TradeRecord[] = JSON.parse(localStorage.getItem(key) || '[]')
+      const match = JSON.stringify(oldRec)
+      const i = arr.findIndex(r => JSON.stringify(r) === match)
+      if (i !== -1) {
+        arr[i] = newRec
+        localStorage.setItem(key, JSON.stringify(arr))
+      }
+    } catch {}
+
+    const startingCash = getStartingCapital()
+    const sorted = [...updated].sort((a, b) => a.date.localeCompare(b.date))
+    const { holdings, cash } = recalculateHoldings(sorted, startingCash)
+    saveHoldings(holdings)
+    saveCash(cash)
+    saveUserData('holdings', holdings).catch(() => {})
+    saveUserData('cash', cash).catch(() => {})
+
+    window.dispatchEvent(new CustomEvent('eq-record-added'))
+    window.dispatchEvent(new Event('storage'))
+  }
 
   const handlePositionOpened = useCallback((data: Omit<OpenPosition, 'id'>) => {
     const pos: OpenPosition = { ...data, id: Date.now().toString() }
@@ -1431,7 +1483,8 @@ export default function PerformancePage() {
                     }}>
                       {r.status || <span style={{ color: 'var(--faint)' }}>—</span>}
                     </div>
-                    <div style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 2 }}>
+                      <EditBtn onClick={() => setEditTrade({ record: r, idx: origIdx })} />
                       <DelBtn
                         pending={pendingDelete === dispIdx}
                         onDelete={() => requestDelete(dispIdx)}
@@ -1465,6 +1518,18 @@ export default function PerformancePage() {
         <RecordTradeModal
           onClose={handleRecordClose}
           onSave={handleTradeRecorded}
+        />
+      )}
+
+      {/* Edit Trade Modal */}
+      {editTrade && (
+        <RecordTradeModal
+          initial={editTrade.record}
+          onClose={() => setEditTrade(null)}
+          onSave={rec => {
+            handleTradeEdited(editTrade.idx, editTrade.record, rec)
+            setEditTrade(null)
+          }}
         />
       )}
     </div>
