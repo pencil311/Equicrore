@@ -196,8 +196,8 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid-2">
-        <HoldingsPanel holdings={liveHoldings} onTrade={openTrade} />
         <PerformanceSummaryPanel />
+        <HoldingsPanel holdings={liveHoldings} onTrade={openTrade} />
       </div>
 
       <div className="grid-2">
