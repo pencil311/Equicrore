@@ -2,31 +2,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { WatchlistItem } from '@/lib/mockData'
 
-// Map our symbols to Yahoo Finance format
-const YAHOO_MAP: Record<string, string> = {
-  // Indian stocks (NSE)
-  RELIANCE:   'RELIANCE.NS',
-  TCS:        'TCS.NS',
-  INFY:       'INFY.NS',
-  HDFCBANK:   'HDFCBANK.NS',
-  TATAMOTORS: 'TATAMOTORS.NS',
-  NIFTYBEES:  'NIFTYBEES.NS',
-  PPFAS:      'PPFAS.NS',
-  WIPRO:      'WIPRO.NS',
-  ZOMATO:     'ZOMATO.NS',
-  GOLDBEES:   'GOLDBEES.NS',
-  ICICIBANK:  'ICICIBANK.NS',
-  BAJFINANCE: 'BAJFINANCE.NS',
-  // US stocks (no suffix)
-  AAPL: 'AAPL', NVDA: 'NVDA', TSLA: 'TSLA',
-  MSFT: 'MSFT', AMZN: 'AMZN', GOOGL: 'GOOGL',
-  META: 'META', NFLX: 'NFLX',
-  // Crypto (direct symbol, CoinGecko handles these)
-  BTC: 'BTC', ETH: 'ETH', SOL: 'SOL',
-  BNB: 'BNB', XRP: 'XRP', ADA: 'ADA',
-  DOGE: 'DOGE', MATIC: 'MATIC',
-}
-
 export interface LivePrice {
   price: number
   chg: number
@@ -40,10 +15,10 @@ export function useLivePrices(symbols: string[], intervalMs = 15000) {
 
   const fetchPrices = useCallback(async () => {
     if (!symbols.length) return
-    // Build query string with Yahoo-mapped symbols
-    const querySyms = symbols.map(s => YAHOO_MAP[s] || s).join(',')
+    // The API resolves app symbols server-side (see lib/priceSymbols)
+    const querySyms = symbols.join(',')
     try {
-      const res = await fetch(`/api/prices?symbols=${querySyms}`)
+      const res = await fetch(`/api/prices?symbols=${encodeURIComponent(querySyms)}`)
       if (!res.ok) return
       const data = await res.json()
       if (!mountedRef.current) return
