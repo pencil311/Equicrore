@@ -53,6 +53,25 @@ async function fetchYahoo(symbols: string[]): Promise<Record<string, any>> {
   return out
 }
 
+/* USD→INR rate, cached for 5 minutes */
+let FX_CACHE: { rate: number; ts: number } | null = null
+async function usdInrRate(): Promise<number> {
+  const now = Date.now()
+  if (FX_CACHE && now - FX_CACHE.ts < 5 * 60_000) return FX_CACHE.rate
+  const d = await fetchYahooOne('USDINR=X')
+  if (d && d.price > 0) {
+    FX_CACHE = { rate: d.price, ts: now }
+    return d.price
+  }
+  return FX_CACHE?.rate ?? 0
+}
+
+/* Convert USD quotes to INR. Indices (^GSPC is points, not dollars) and
+   forex pairs (EURUSD is a ratio) are left untouched. */
+function shouldConvert(yahooSym: string, d: any): boolean {
+  return d.currency === 'USD' && !yahooSym.startsWith('^') && !yahooSym.endsWith('=X')
+}
+
 async function fetchCoinGecko(coinIds: string[]): Promise<Record<string, any>> {
   if (!coinIds.length) return {}
   const ids = encodeURIComponent(coinIds.join(','))
@@ -88,10 +107,14 @@ export async function GET(req: NextRequest) {
     coinIds.length ? fetchCoinGecko(coinIds) : Promise.resolve({} as Record<string, any>),
   ])
 
+  const needsFx = uncached.some(e => e.yahoo && yahooData[e.yahoo] && shouldConvert(e.yahoo, yahooData[e.yahoo]))
+  const fxRate = needsFx ? await usdInrRate() : 0
+
   for (const e of uncached) {
     if (e.yahoo && yahooData[e.yahoo]) {
       const d = yahooData[e.yahoo]
-      CACHE[e.key] = { price: d.price, chg: d.chg, chgPct: d.chgPct, ts: now }
+      const mul = shouldConvert(e.yahoo, d) && fxRate > 0 ? fxRate : 1
+      CACHE[e.key] = { price: d.price * mul, chg: d.chg * mul, chgPct: d.chgPct, ts: now }
     } else if (e.coingecko && cgData[e.coingecko]) {
       const d = cgData[e.coingecko]
       CACHE[e.key] = {
