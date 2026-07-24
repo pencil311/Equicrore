@@ -7,6 +7,7 @@ import { localDateISO } from '@/lib/format'
 import '@/styles/dashboard.css'
 import { Sidebar, TopBar } from '@/components/dashboard/DashLayout'
 import { RecordModal } from '@/components/dashboard/DashPanels'
+import { TradingCalendarModal } from '@/components/dashboard/TradingCalendar'
 import { DashContext } from '@/lib/dashContext'
 import {
   type PortfolioHolding,
@@ -49,6 +50,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [sidebarOpen, setSidebarOpen]     = useState(false)
   const [sidebarPinned, setSidebarPinned] = useState(false)
   const [editOpen, setEditOpen]           = useState(false)
+  const [calOpen, setCalOpen]             = useState(false)
   const [editInput, setEditInput]         = useState('')
   const [nameInput, setNameInput]         = useState('')
   const [nameSaving, setNameSaving]       = useState(false)
@@ -262,7 +264,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <div className="main">
-          <TopBar onTrade={openTrade} theme={theme} toggleTheme={toggleTheme} />
+          <TopBar onTrade={openTrade} onCalendar={() => setCalOpen(true)} theme={theme} toggleTheme={toggleTheme} />
           <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             {children}
           </div>
@@ -372,6 +374,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       )}
+
+      {/* Trading calendar — opened from the top bar */}
+      <TradingCalendarModal
+        open={calOpen}
+        onClose={() => setCalOpen(false)}
+        records={txns}
+      />
 
       <RecordModal
         open={modal.open}

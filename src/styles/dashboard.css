@@ -169,6 +169,12 @@
 .lesson-item.lock .lt b { color: var(--faint); }
 .btn.go { padding: 5px 12px; font-size: 12px; }
 
+/* trading calendar */
+.eq-calday { transition: transform .16s var(--ease), box-shadow .16s var(--ease); }
+.eq-calday.has:hover { transform: scale(1.08); box-shadow: var(--sh); }
+.eq-yearday { transition: transform .13s var(--ease); }
+.eq-yearday.has:hover { transform: scale(1.5); }
+
 /* trade modal */
 .ov { position: fixed; inset: 0; background: rgba(0,0,0,.36); z-index: 100; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .25s; }
 .ov.show { opacity: 1; pointer-events: all; }
