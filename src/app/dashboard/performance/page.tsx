@@ -946,6 +946,272 @@ function OpenPositionsPanel({ positions, livePrices, onAdd, onPositionClose }: {
   )
 }
 
+/* ================================================================
+   Trading Calendar — P&L heatmap by day
+   ================================================================ */
+const CHEV_LEFT  = 'M15 18l-6-6 6-6'
+const CHEV_RIGHT = 'M9 18l6-6-6-6'
+const WEEKDAYS   = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+/* Day detail grid — mirrors the trade log row layout, minus date & actions */
+const DAY_COL = 'minmax(150px, 1.2fr) 64px 92px 120px minmax(110px, 1fr)'
+
+function isoOf(y: number, m: number, d: number): string {
+  return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
+
+/* Alpha steps: small / medium / large, scaled against the month's biggest |P&L| */
+function alphaFor(ratio: number): number {
+  return ratio > 0.66 ? 0.6 : ratio > 0.33 ? 0.35 : 0.15
+}
+
+function NavBtn({ d, onClick, disabled }: { d: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: 26, height: 26, borderRadius: '50%',
+        border: '1.5px solid var(--line)', background: 'transparent',
+        color: disabled ? 'var(--faint)' : 'var(--muted)',
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? 0.4 : 1,
+        transition: 'all .13s var(--ease)',
+      }}
+    >
+      <Ico d={d} s={14} />
+    </button>
+  )
+}
+
+function TradingCalendar({ records, catLabel }: { records: TradeRecord[]; catLabel: string }) {
+  const today = localDateISO()
+  const [ty, tm] = today.split('-').map(Number)
+
+  const [cursor, setCursor] = useState<{ y: number; m: number }>({ y: ty, m: tm - 1 })
+  const [selDay, setSelDay] = useState<string | null>(null)
+
+  /* Records grouped by their YYYY-MM-DD date field */
+  const byDay = useMemo(() => {
+    const map = new Map<string, TradeRecord[]>()
+    for (const r of records) {
+      if (!r.date) continue
+      const list = map.get(r.date)
+      if (list) list.push(r)
+      else map.set(r.date, [r])
+    }
+    return map
+  }, [records])
+
+  /* Grid cells + month aggregates for the visible month */
+  const month = useMemo(() => {
+    const { y, m } = cursor
+    const daysInMonth = new Date(y, m + 1, 0).getDate()
+    const lead = (new Date(y, m, 1).getDay() + 6) % 7   // Monday-first
+    const days: Array<{ d: number; iso: string; pl: number; count: number }> = []
+    let net = 0, traded = 0, profit = 0, loss = 0, maxAbs = 0
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const iso  = isoOf(y, m, d)
+      const recs = byDay.get(iso)
+      const pl   = recs ? recs.reduce((s, r) => s + (Number(r.profit) || 0), 0) : 0
+      if (recs && recs.length) {
+        traded++
+        net += pl
+        if (pl > 0) profit++
+        else if (pl < 0) loss++
+        maxAbs = Math.max(maxAbs, Math.abs(pl))
+      }
+      days.push({ d, iso, pl, count: recs ? recs.length : 0 })
+    }
+    return { days, lead, net, traded, profit, loss, maxAbs }
+  }, [byDay, cursor])
+
+  /* Drop the expanded day if its records disappear (edit / delete elsewhere) */
+  useEffect(() => {
+    if (selDay && !byDay.has(selDay)) setSelDay(null)
+  }, [byDay, selDay])
+
+  function step(delta: number) {
+    setSelDay(null)
+    setCursor(c => {
+      const d = new Date(c.y, c.m + delta, 1)
+      return { y: d.getFullYear(), m: d.getMonth() }
+    })
+  }
+
+  const atCurrentMonth = cursor.y === ty && cursor.m === tm - 1
+  const monthLabel = new Date(cursor.y, cursor.m, 1)
+    .toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+  const winRate  = month.traded > 0 ? Math.round((month.profit / month.traded) * 100) : 0
+  const selRecs  = selDay ? byDay.get(selDay) ?? [] : []
+  const selPL    = selRecs.reduce((s, r) => s + (Number(r.profit) || 0), 0)
+  const selLabel = selDay
+    ? new Date(Number(selDay.slice(0, 4)), Number(selDay.slice(5, 7)) - 1, Number(selDay.slice(8, 10)))
+        .toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })
+    : ''
+
+  return (
+    <div className="panel" style={{ marginBottom: 18 }}>
+      <div className="panel-head">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h3>Trading Calendar</h3>
+          {catLabel !== 'All' && <span className="sub">{catLabel}</span>}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <NavBtn d={CHEV_LEFT} onClick={() => step(-1)} />
+          <span style={{
+            fontFamily: 'var(--serif)', fontSize: 16, fontWeight: 500,
+            color: 'var(--ink)', minWidth: 128, textAlign: 'center',
+          }}>{monthLabel}</span>
+          <NavBtn d={CHEV_RIGHT} onClick={() => step(1)} disabled={atCurrentMonth} />
+        </div>
+      </div>
+
+      {/* Grid */}
+      <div style={{ maxWidth: 400, margin: '0 auto' }}>
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 6,
+          fontSize: 11, fontWeight: 700, textTransform: 'uppercase' as const,
+          letterSpacing: '.06em', color: 'var(--faint)', textAlign: 'center' as const,
+          marginBottom: 6,
+        }}>
+          {WEEKDAYS.map((w, i) => <span key={i}>{w}</span>)}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 6 }}>
+          {Array.from({ length: month.lead }, (_, i) => <div key={`lead-${i}`} />)}
+          {month.days.map(({ d, iso, pl, count }) => {
+            const has   = count > 0
+            const ratio = month.maxAbs > 0 ? Math.abs(pl) / month.maxAbs : 0
+            const a     = alphaFor(ratio)
+            const bg    = !has || pl === 0
+              ? (has ? 'var(--bg-2)' : 'transparent')
+              : pl > 0 ? `rgba(0,154,81,${a})` : `rgba(192,73,47,${a})`
+            const isToday = iso === today
+            const isSel   = iso === selDay
+
+            return (
+              <button
+                key={iso}
+                type="button"
+                className={`eq-calday${has ? ' has' : ''}`}
+                disabled={!has}
+                title={has ? `${count} trade${count === 1 ? '' : 's'} · ${plStr(pl)}` : undefined}
+                onClick={() => has && setSelDay(cur => (cur === iso ? null : iso))}
+                style={{
+                  height: 40, borderRadius: 10, border: 'none', padding: 0,
+                  background: bg,
+                  color: has ? 'var(--ink)' : 'var(--faint)',
+                  fontFamily: 'var(--sans)', fontSize: 13, fontWeight: 600,
+                  fontVariantNumeric: 'tabular-nums',
+                  cursor: has ? 'pointer' : 'default',
+                  outline: isSel
+                    ? '2px solid var(--green)'
+                    : isToday ? '1.5px solid rgba(0,154,81,.45)' : 'none',
+                  outlineOffset: isSel ? 1 : -1.5,
+                }}
+              >{d}</button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Month summary */}
+      <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--line)', textAlign: 'center' as const }}>
+        <div style={{
+          fontFamily: 'var(--serif)', fontSize: 28, fontWeight: 500, letterSpacing: '-.02em',
+          color: month.net > 0 ? 'var(--gain)' : month.net < 0 ? 'var(--loss)' : 'var(--ink)',
+        }}>
+          {plStr(month.net)}
+        </div>
+        <div style={{
+          display: 'flex', flexWrap: 'wrap' as const, justifyContent: 'center',
+          gap: 4, marginTop: 8, fontSize: 12, color: 'var(--muted)',
+        }}>
+          <span>Traded On: <b style={{ color: 'var(--ink)' }}>{month.traded} day{month.traded === 1 ? '' : 's'}</b></span>
+          <span style={{ color: 'var(--faint)' }}>·</span>
+          <span>In-Profit Days: <b style={{ color: 'var(--gain)' }}>{month.profit}</b></span>
+          <span style={{ color: 'var(--faint)' }}>·</span>
+          <span>Loss Days: <b style={{ color: 'var(--loss)' }}>{month.loss}</b></span>
+          <span style={{ color: 'var(--faint)' }}>·</span>
+          <span>Win rate: <b style={{ color: 'var(--ink)' }}>{winRate}%</b></span>
+        </div>
+        <div style={{ fontSize: 12.5, color: 'var(--faint)', marginTop: 6 }}>
+          {month.traded === 0
+            ? 'No trades recorded this month'
+            : `Profitable on ${month.profit} of ${month.traded} traded day${month.traded === 1 ? '' : 's'}`}
+        </div>
+      </div>
+
+      {/* Day detail */}
+      {selDay && selRecs.length > 0 && (
+        <div style={{
+          marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--line)',
+          animation: 'eqFadeUp .18s var(--ease)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>{selLabel}</div>
+            <div style={{
+              fontFamily: 'var(--serif)', fontSize: 17, fontWeight: 600,
+              color: selPL > 0 ? 'var(--gain)' : selPL < 0 ? 'var(--loss)' : 'var(--muted)',
+            }}>
+              {plStr(selPL)}
+            </div>
+          </div>
+
+          <div style={{
+            display: 'grid', gridTemplateColumns: DAY_COL, gap: 12,
+            padding: '0 0 8px',
+            fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase' as const,
+            letterSpacing: '.06em', color: 'var(--faint)',
+            borderBottom: '1px solid var(--line)',
+          }}>
+            <span>Instrument</span>
+            <span>Type</span>
+            <span>Category</span>
+            <span style={{ textAlign: 'right' }}>P&amp;L</span>
+            <span>Notes</span>
+          </div>
+          <div className="list">
+            {selRecs.map((r, i) => {
+              const up   = r.profit > 0
+              const zero = r.profit === 0
+              return (
+                <div className="lrow" key={i} style={{ gridTemplateColumns: DAY_COL, minHeight: 44 }}>
+                  <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                    <b style={{ fontSize: '13.5px', color: 'var(--ink)' }}>{r.instrument || r.sym}</b>
+                    {r.instrument && r.instrument !== r.sym && (
+                      <span className="muted" style={{ fontSize: 12, marginLeft: 6 }}>{r.sym}</span>
+                    )}
+                  </div>
+                  <span>
+                    <span className={`txtype ${r.type === 'BUY' ? 'buy' : 'sell'}`}>{r.type}</span>
+                  </span>
+                  <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>{r.category || 'Equities'}</span>
+                  <div style={{
+                    textAlign: 'right', whiteSpace: 'nowrap' as const,
+                    fontWeight: 700, fontSize: '13.5px',
+                    color: zero ? 'var(--muted)' : up ? 'var(--gain)' : 'var(--loss)',
+                  }}>
+                    {zero ? '₹0' : `${up ? '+' : '−'}${inr(Math.abs(r.profit))}`}
+                  </div>
+                  <div style={{
+                    minWidth: 0, fontSize: 13, color: 'var(--muted)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const,
+                  }}>
+                    {r.status || <span style={{ color: 'var(--faint)' }}>—</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ---- date input style (used by filter bar) ---- */
 const dateInputStyle: React.CSSProperties = {
   flex: 1, border: '1.5px solid var(--line)', borderRadius: 'var(--r-sm)',
@@ -1195,6 +1461,12 @@ export default function PerformancePage() {
     }, [])
   }, [records, cat, time, fromDate, toDate])
 
+  /* Calendar respects the category filter only — it has its own month navigation */
+  const catRecords = useMemo(
+    () => cat === 'All' ? records : records.filter(r => (r.category || 'Equities') === cat),
+    [records, cat]
+  )
+
   const filtered    = filteredWithIdx.map(x => x.r)
   const netPL       = filtered.reduce((s, r) => s + (Number(r.profit) || 0), 0)
   const realisedPL  = filtered.filter(r => r.type === 'SELL' && r.profit > 0).reduce((s, r) => s + r.profit, 0)
@@ -1230,6 +1502,8 @@ export default function PerformancePage() {
           70%  { box-shadow: 0 0 0 7px rgba(0,154,81,0);  }
           100% { box-shadow: 0 0 0 0   rgba(0,154,81,0);  }
         }
+        .eq-calday { transition: transform .16s var(--ease), box-shadow .16s var(--ease); }
+        .eq-calday.has:hover { transform: scale(1.08); box-shadow: var(--sh); }
       `}</style>
 
       <div className="page-head">
@@ -1364,6 +1638,9 @@ export default function PerformancePage() {
           Journal
         </button>
       </div>
+
+      {/* Trading Calendar */}
+      <TradingCalendar records={catRecords} catLabel={cat} />
 
       {/* Trade log */}
       <div className="panel">
