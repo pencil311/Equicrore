@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { inr, localDateISO } from '@/lib/format'
 import type { TradeRecord } from '@/lib/portfolio'
 import { Ico } from './DashLayout'
@@ -19,6 +19,7 @@ const PL_MODES = [
   { v: 'loss',     l: 'Loss only' },
 ] as const
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 /* Day detail grid — mirrors the trade log row layout, minus date & actions */
 const DAY_COL = 'minmax(150px, 1.2fr) 64px 92px 120px minmax(110px, 1fr)'
 /* Year heatmap cell geometry */
@@ -46,12 +47,6 @@ function isoOf(y: number, m: number, d: number): string {
 /** Parse YYYY-MM-DD as a local date (never UTC — avoids off-by-one days) */
 function parseISO(s: string): Date {
   return new Date(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10)))
-}
-
-function startOfWeek(d: Date): Date {
-  const x = new Date(d)
-  x.setDate(x.getDate() - ((x.getDay() + 6) % 7))   // Monday-first
-  return x
 }
 
 function plStr(val: number): string {
@@ -197,10 +192,45 @@ export function TradingCalendar({ records }: { records: TradeRecord[] }) {
   const [ty, tm] = today.split('-').map(Number)
 
   const [view, setView]       = useState<ViewMode>('month')
-  const [cursor, setCursor]   = useState<{ y: number; m: number }>({ y: ty, m: tm - 1 })
-  const [selDay, setSelDay]   = useState<string | null>(null)
-  const [draft, setDraft]     = useState<Filters>(EMPTY_FILTERS)
-  const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS)
+  const [cursor, setCursor]     = useState<{ y: number; m: number }>({ y: ty, m: tm - 1 })
+  const [selDay, setSelDay]     = useState<string | null>(null)
+  const [draft, setDraft]       = useState<Filters>(EMPTY_FILTERS)
+  const [applied, setApplied]   = useState<Filters>(EMPTY_FILTERS)
+  const [showPicker, setShowPicker] = useState(false)
+  const pickerRef = useRef<HTMLDivElement>(null)
+
+  /* Years offered in the month/year picker — from the earliest record up to now */
+  const years = useMemo(() => {
+    let min = ty
+    for (const r of records) {
+      if (!r.date) continue
+      const y = Number(r.date.slice(0, 4))
+      if (y && y < min) min = y
+    }
+    const out: number[] = []
+    for (let y = min; y <= ty; y++) out.push(y)
+    return out
+  }, [records, ty])
+
+  /* Jump to a month/year, never past the current month */
+  function goTo(y: number, m: number) {
+    if (y > ty || (y === ty && m > tm - 1)) { y = ty; m = tm - 1 }
+    setSelDay(null)
+    setCursor({ y, m })
+  }
+
+  /* Close the picker on outside click */
+  useEffect(() => {
+    if (!showPicker) return
+    function onDown(e: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setShowPicker(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [showPicker])
+
+  /* Close the picker when switching away from month view */
+  useEffect(() => { if (view !== 'month') setShowPicker(false) }, [view])
 
   /* Records surviving every applied filter */
   const filtered = useMemo(() => {
@@ -255,32 +285,36 @@ export function TradingCalendar({ records }: { records: TradeRecord[] }) {
     return { days, lead, net, traded, profit, loss, maxAbs }
   }, [byDay, cursor])
 
-  /* --- All view: week columns across the whole range, like a contribution graph --- */
+  /* --- All view: one self-contained mini-grid per month, blocks separated by a gap --- */
+  type YearCell = { iso: string; pl: number; count: number; has: boolean } | null
   const year = useMemo(() => {
     const end   = applied.to   ? parseISO(applied.to)   : new Date()
     const start = applied.from ? parseISO(applied.from) : new Date(end.getFullYear(), end.getMonth() - 11, 1)
     const startISO = localDateISO(start)
     const endISO   = localDateISO(end)
 
-    const weeks: Array<Array<{ iso: string; pl: number; count: number; inRange: boolean }>> = []
-    const monthOfWeek: number[] = []
+    const months: Array<{ key: string; y: number; m: number; label: string; cells: YearCell[] }> = []
     let net = 0, traded = 0, profit = 0, loss = 0, maxAbs = 0, trades = 0
     let best: { iso: string; pl: number } | null = null
     let worst: { iso: string; pl: number } | null = null
 
-    const cur = startOfWeek(start)
-    while (localDateISO(cur) <= endISO && weeks.length < 400) {
-      const col: Array<{ iso: string; pl: number; count: number; inRange: boolean }> = []
-      let weekMonth = -1
-      for (let i = 0; i < 7; i++) {
-        const iso     = localDateISO(cur)
+    const iter = new Date(start.getFullYear(), start.getMonth(), 1)
+    const last = new Date(end.getFullYear(), end.getMonth(), 1)
+    while (iter <= last && months.length < 60) {
+      const y = iter.getFullYear(), m = iter.getMonth()
+      const daysInMonth = new Date(y, m + 1, 0).getDate()
+      const lead  = (new Date(y, m, 1).getDay() + 6) % 7   // Monday-first
+      const cells: YearCell[] = Array.from({ length: lead }, () => null)
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const iso     = isoOf(y, m, d)
         const inRange = iso >= startISO && iso <= endISO
-        if (inRange && weekMonth < 0) weekMonth = cur.getMonth()
-        const recs = inRange ? byDay.get(iso) : undefined
-        const pl   = recs ? recs.reduce((s, r) => s + (Number(r.profit) || 0), 0) : 0
-        if (recs && recs.length) {
+        const recs    = inRange ? byDay.get(iso) : undefined
+        const pl      = recs ? recs.reduce((s, r) => s + (Number(r.profit) || 0), 0) : 0
+        const has     = !!(inRange && recs && recs.length)
+        if (has) {
           traded++
-          trades += recs.length
+          trades += recs!.length
           net += pl
           if (pl > 0) profit++
           else if (pl < 0) loss++
@@ -288,25 +322,19 @@ export function TradingCalendar({ records }: { records: TradeRecord[] }) {
           if (!best  || pl > best.pl)  best  = { iso, pl }
           if (!worst || pl < worst.pl) worst = { iso, pl }
         }
-        col.push({ iso, pl, count: recs ? recs.length : 0, inRange })
-        cur.setDate(cur.getDate() + 1)
+        cells.push(inRange ? { iso, pl, count: recs ? recs.length : 0, has } : null)
       }
-      monthOfWeek.push(weekMonth)
-      weeks.push(col)
+
+      months.push({
+        key: `${y}-${m}`,
+        y, m,
+        label: new Date(y, m, 1).toLocaleDateString('en-IN', { month: 'short' }),
+        cells,
+      })
+      iter.setMonth(iter.getMonth() + 1)
     }
 
-    /* Group consecutive week columns by month for the labels underneath */
-    const labels: Array<{ label: string; col: number; span: number }> = []
-    weeks.forEach((_, i) => {
-      const m = monthOfWeek[i]
-      if (m < 0) return
-      const prev = labels[labels.length - 1]
-      const monthName = new Date(2000, m, 1).toLocaleDateString('en-IN', { month: 'short' })
-      if (prev && prev.label === monthName && prev.col + prev.span === i) prev.span++
-      else labels.push({ label: monthName, col: i, span: 1 })
-    })
-
-    return { weeks, labels, net, traded, profit, loss, maxAbs, trades, best, worst, startISO, endISO }
+    return { months, net, traded, profit, loss, maxAbs, trades, best, worst, startISO, endISO }
   }, [byDay, applied.from, applied.to])
 
   /* Drop the expanded day if its records disappear (edit / delete elsewhere) */
@@ -442,10 +470,80 @@ export function TradingCalendar({ records }: { records: TradeRecord[] }) {
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 16 }}>
             <NavBtn d={CHEV_LEFT} onClick={() => step(-1)} />
-            <span style={{
-              fontFamily: 'var(--serif)', fontSize: 17, fontWeight: 500,
-              color: 'var(--ink)', minWidth: 136, textAlign: 'center',
-            }}>{monthLabel}</span>
+            <div ref={pickerRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowPicker(v => !v)}
+                title="Choose month & year"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px',
+                  fontFamily: 'var(--serif)', fontSize: 17, fontWeight: 500,
+                  color: 'var(--ink)', minWidth: 136, justifyContent: 'center',
+                }}
+              >
+                {monthLabel}
+                <span style={{
+                  color: 'var(--faint)', transform: showPicker ? 'rotate(180deg)' : 'none',
+                  transition: 'transform .15s', display: 'flex',
+                }}>
+                  <Ico d="M6 9l6 6 6-6" s={14} />
+                </span>
+              </button>
+
+              {showPicker && (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',
+                  zIndex: 60, display: 'flex', gap: 8,
+                  background: 'var(--paper)', border: '1px solid var(--line)',
+                  borderRadius: 'var(--r)', boxShadow: 'var(--sh-lg)', padding: 8,
+                }}>
+                  {/* Months — scrolls independently */}
+                  <div className="eq-picker-col" style={{ width: 118, maxHeight: 208, overflowY: 'auto' }}>
+                    {MONTH_NAMES.map((name, i) => {
+                      const isFuture = cursor.y === ty && i > tm - 1
+                      const on = i === cursor.m
+                      return (
+                        <button
+                          key={name}
+                          ref={on ? (el => el?.scrollIntoView({ block: 'nearest' })) : undefined}
+                          onClick={() => { if (!isFuture) goTo(cursor.y, i) }}
+                          disabled={isFuture}
+                          style={{
+                            display: 'block', width: '100%', textAlign: 'left',
+                            padding: '7px 12px', borderRadius: 'var(--r-sm)', border: 'none', marginBottom: 2,
+                            background: on ? 'var(--forest)' : 'transparent',
+                            color: isFuture ? 'var(--faint)' : on ? '#eafff2' : 'var(--ink)',
+                            fontFamily: 'var(--sans)', fontSize: 13.5, fontWeight: on ? 700 : 500,
+                            cursor: isFuture ? 'default' : 'pointer', opacity: isFuture ? 0.4 : 1,
+                          }}
+                        >{name}</button>
+                      )
+                    })}
+                  </div>
+                  {/* Years — scrolls independently */}
+                  <div className="eq-picker-col" style={{ width: 78, maxHeight: 208, overflowY: 'auto' }}>
+                    {years.map(y => {
+                      const on = y === cursor.y
+                      return (
+                        <button
+                          key={y}
+                          ref={on ? (el => el?.scrollIntoView({ block: 'nearest' })) : undefined}
+                          onClick={() => goTo(y, cursor.m)}
+                          style={{
+                            display: 'block', width: '100%', textAlign: 'center',
+                            padding: '7px 10px', borderRadius: 'var(--r-sm)', border: 'none', marginBottom: 2,
+                            background: on ? 'var(--forest)' : 'transparent',
+                            color: on ? '#eafff2' : 'var(--ink)',
+                            fontFamily: 'var(--sans)', fontSize: 13.5, fontWeight: on ? 700 : 500,
+                            fontVariantNumeric: 'tabular-nums', cursor: 'pointer',
+                          }}
+                        >{y}</button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
             <NavBtn d={CHEV_RIGHT} onClick={() => step(1)} disabled={atCurrentMonth} />
           </div>
 
@@ -506,51 +604,46 @@ export function TradingCalendar({ records }: { records: TradeRecord[] }) {
           </div>
 
           <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
-            <div style={{ display: 'inline-block', minWidth: '100%' }}>
-              <div style={{
-                display: 'grid', gap: GAP,
-                gridTemplateColumns: `repeat(${year.weeks.length}, ${CELL}px)`,
-                gridTemplateRows: `repeat(7, ${CELL}px)`,
-                gridAutoFlow: 'column',
-              }}>
-                {year.weeks.flatMap(week => week.map(({ iso, pl, count, inRange }) => {
-                  const has   = inRange && count > 0
-                  const ratio = year.maxAbs > 0 ? Math.abs(pl) / year.maxAbs : 0
-                  const isSel = iso === selDay
-                  return (
-                    <button
-                      key={iso}
-                      type="button"
-                      className={`eq-yearday${has ? ' has' : ''}`}
-                      disabled={!has}
-                      title={inRange
-                        ? (has ? `${iso} · ${count} trade${count === 1 ? '' : 's'} · ${plStr(pl)}` : iso)
-                        : undefined}
-                      onClick={() => has && pickDay(iso)}
-                      style={{
-                        width: CELL, height: CELL, padding: 0, borderRadius: 3, border: 'none',
-                        background: !inRange ? 'transparent' : has ? cellBg(pl, ratio, true) : 'var(--bg-2)',
-                        cursor: has ? 'pointer' : 'default',
-                        outline: isSel ? '2px solid var(--green)' : 'none',
-                        outlineOffset: 1,
-                        visibility: inRange ? 'visible' : 'hidden',
-                      }}
-                    />
-                  )
-                }))}
-              </div>
-
-              {/* Month labels */}
-              <div style={{
-                display: 'grid', gap: GAP, marginTop: 8,
-                gridTemplateColumns: `repeat(${year.weeks.length}, ${CELL}px)`,
-                fontSize: 11, fontWeight: 600, textTransform: 'uppercase' as const,
-                letterSpacing: '.06em', color: 'var(--faint)',
-              }}>
-                {year.labels.map((l, i) => (
-                  <span key={i} style={{ gridColumn: `${l.col + 1} / span ${l.span}` }}>{l.label}</span>
-                ))}
-              </div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 18, minWidth: 'min-content' }}>
+              {year.months.map(mo => (
+                <div key={mo.key}>
+                  <div style={{
+                    display: 'grid', gap: GAP,
+                    gridTemplateRows: `repeat(7, ${CELL}px)`,
+                    gridAutoFlow: 'column',
+                  }}>
+                    {mo.cells.map((c, i) => {
+                      if (!c) return <div key={i} style={{ width: CELL, height: CELL }} />
+                      const { iso, pl, count, has } = c
+                      const ratio = year.maxAbs > 0 ? Math.abs(pl) / year.maxAbs : 0
+                      const isSel = iso === selDay
+                      return (
+                        <button
+                          key={iso}
+                          type="button"
+                          className={`eq-yearday${has ? ' has' : ''}`}
+                          disabled={!has}
+                          title={has ? `${iso} · ${count} trade${count === 1 ? '' : 's'} · ${plStr(pl)}` : iso}
+                          onClick={() => has && pickDay(iso)}
+                          style={{
+                            width: CELL, height: CELL, padding: 0, borderRadius: 3, border: 'none',
+                            background: has ? cellBg(pl, ratio, true) : 'var(--bg-2)',
+                            cursor: has ? 'pointer' : 'default',
+                            outline: isSel ? '2px solid var(--green)' : 'none',
+                            outlineOffset: 1,
+                          }}
+                        />
+                      )
+                    })}
+                  </div>
+                  <div style={{
+                    marginTop: 8, fontSize: 11, fontWeight: 600, textTransform: 'uppercase' as const,
+                    letterSpacing: '.06em', color: 'var(--faint)', whiteSpace: 'nowrap' as const,
+                  }}>
+                    {mo.label}{mo.m === 0 ? ` ’${String(mo.y).slice(2)}` : ''}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
