@@ -5,10 +5,20 @@ interface CandleChartProps {
   symbol: string      // Yahoo Finance symbol e.g. RELIANCE.NS, AAPL, CL=F, BTC-USD
   name:   string
   theme?: 'light' | 'dark'
+  /** Stretch the chart to its container's height instead of the fixed 380px */
+  fill?:  boolean
 }
 
-const TFS = ['1D','1W','1M','3M','1Y','5Y'] as const
+/* Timeframes mirror /api/candles RANGE_MAP. Intraday first, then daily+ */
+const TF_INTRADAY = ['1m','2m','5m','15m','30m','1h'] as const
+const TF_DAILY    = ['1D','1W','1M','MAX'] as const
+const TFS = [...TF_INTRADAY, ...TF_DAILY] as const
 type TF = typeof TFS[number]
+
+const INTRADAY = new Set<string>(TF_INTRADAY)
+
+/* How many bars to show on load. The rest stays scrollable to the left. */
+const VISIBLE_BARS = 160
 
 function fmt(n: number, currency: string): string {
   if (!n) return '—'
@@ -21,17 +31,21 @@ function fmt(n: number, currency: string): string {
   return n.toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' ' + currency
 }
 
-export default function CandleChart({ symbol, name, theme = 'light' }: CandleChartProps) {
+export default function CandleChart({ symbol, name, theme = 'light', fill = false }: CandleChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef     = useRef<any>(null)
   const candleRef    = useRef<any>(null)
   const volRef       = useRef<any>(null)
-  const [tf, setTf]          = useState<TF>('1M')
+  const lastCandleRef = useRef<{ time:number;open:number;high:number;low:number;close:number } | null>(null)
+  const [tf, setTf]          = useState<TF>('1D')
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
   const [currency, setCurrency] = useState('INR')
   const [tooltip, setTooltip]   = useState<{ o:number;h:number;l:number;c:number;v:number;t:number } | null>(null)
   const [livePrice, setLivePrice] = useState<number | null>(null)
+  /* Set when the API had to serve a coarser interval than the one requested */
+  const [fellBackTo, setFellBackTo] = useState<string | null>(null)
+  const [barCount, setBarCount]     = useState(0)
 
   const bg     = theme === 'dark' ? '#0e2017' : '#fbfdfb'
   const grid   = theme === 'dark' ? 'rgba(180,240,200,0.06)' : 'rgba(0,60,32,0.05)'
@@ -47,14 +61,27 @@ export default function CandleChart({ symbol, name, theme = 'light' }: CandleCha
     // Destroy previous
     if (chartRef.current) { chartRef.current.remove(); chartRef.current = null }
 
+    /* clientHeight can still be 0 on the very first paint — floor it so the
+       canvas is never created at zero height and left invisible. */
+    const measured = fill ? Math.max(containerRef.current.clientHeight, 320) : 380
+
     const chart = createChart(containerRef.current, {
       width:  containerRef.current.clientWidth,
-      height: 380,
+      height: measured,
       layout: { background: { color: bg }, textColor: text },
       grid: { vertLines: { color: grid }, horzLines: { color: grid } },
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: border },
       timeScale: { borderColor: border, timeVisible: true, secondsVisible: false },
+      /* Explicit so scrolling back through the full fetched history and
+         zooming both stay available regardless of library defaults. */
+      handleScroll: {
+        mouseWheel: true, pressedMouseMove: true,
+        horzTouchDrag: true, vertTouchDrag: false,
+      },
+      handleScale: {
+        axisPressedMouseMove: true, mouseWheel: true, pinch: true,
+      },
     })
 
     // Candlestick series
@@ -84,32 +111,57 @@ export default function CandleChart({ symbol, name, theme = 'light' }: CandleCha
 
     // Resize observer
     const ro = new ResizeObserver(() => {
-      if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth })
+      if (!containerRef.current) return
+      chart.applyOptions({
+        width: containerRef.current.clientWidth,
+        ...(fill ? { height: Math.max(containerRef.current.clientHeight, 320) } : {}),
+      })
     })
     ro.observe(containerRef.current)
 
     return () => { ro.disconnect() }
-  }, [theme, bg, grid, text, border])
+  }, [theme, bg, grid, text, border, fill])
 
   const loadCandles = useCallback(async () => {
     if (!candleRef.current) return
     setLoading(true); setError('')
     try {
       const res  = await fetch(`/api/candles?symbol=${encodeURIComponent(symbol)}&tf=${tf}`)
+      if (!res.ok) { setError('Chart data not available for this instrument.'); setLoading(false); return }
       const data = await res.json()
-      if (data.error || !data.candles?.length) { setError('No data available for this symbol.'); setLoading(false); return }
+      if (data.error || !data.candles?.length) { setError('Chart data not available for this instrument.'); setLoading(false); return }
 
       setCurrency(data.currency || 'INR')
       if (data.regularMarketPrice) setLivePrice(data.regularMarketPrice)
+      setFellBackTo(data.fellBack ? (data.intervalLabel || data.tf) : null)
+      setBarCount(data.candles.length)
 
       const candles = data.candles.map((c: any) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close }))
       const volumes = data.candles.map((c: any) => ({ time: c.time, value: c.volume, color: c.close >= c.open ? green + '88' : red + '88' }))
 
       candleRef.current.setData(candles)
       volRef.current.setData(volumes)
-      chartRef.current?.timeScale().fitContent()
+      lastCandleRef.current = candles[candles.length - 1] ?? null
+
+      /* Show time-of-day on the axis only where it means something */
+      chartRef.current?.applyOptions({
+        timeScale: { timeVisible: INTRADAY.has(data.tf || tf), secondsVisible: false },
+      })
+
+      const ts = chartRef.current?.timeScale()
+      if (ts) {
+        ts.fitContent()
+        /* With thousands of bars, fitContent alone squeezes them to slivers.
+           Open on the most recent window; the full history stays scrollable. */
+        if (candles.length > VISIBLE_BARS) {
+          ts.setVisibleLogicalRange({
+            from: candles.length - VISIBLE_BARS,
+            to:   candles.length,
+          })
+        }
+      }
     } catch {
-      setError('Failed to load chart data.')
+      setError('Chart data not available for this instrument.')
     }
     setLoading(false)
   }, [symbol, tf])
@@ -122,7 +174,7 @@ export default function CandleChart({ symbol, name, theme = 'light' }: CandleCha
 
   useEffect(() => { if (candleRef.current) loadCandles() }, [tf])
 
-  // Poll live price every 15s and update last candle
+  // Poll live price every 5s and roll it into the last candle
   useEffect(() => {
     const id = setInterval(async () => {
       try {
@@ -130,9 +182,24 @@ export default function CandleChart({ symbol, name, theme = 'light' }: CandleCha
         const d = await r.json()
         const cleanSym = symbol.replace(/\.(NS|BO|L|T|DE)$/, '')
         const p = d[cleanSym]?.price || d[symbol]?.price
-        if (p && candleRef.current) setLivePrice(p)
+        if (!p) return
+        setLivePrice(p)
+
+        /* Extend the most recent bar in place — same `time` replaces it rather
+           than appending, so this works on every interval from 1m to 1mo. */
+        const lc = lastCandleRef.current
+        if (lc && candleRef.current) {
+          const next = {
+            ...lc,
+            close: p,
+            high:  Math.max(lc.high, p),
+            low:   Math.min(lc.low, p),
+          }
+          lastCandleRef.current = next
+          candleRef.current.update(next)
+        }
       } catch {}
-    }, 15000)
+    }, 5000)
     return () => clearInterval(id)
   }, [symbol])
 
@@ -153,14 +220,26 @@ export default function CandleChart({ symbol, name, theme = 'light' }: CandleCha
             {fmt(livePrice, currency)}
           </div>
         )}
-        {/* TF buttons */}
-        <div style={{ display:'flex', gap:4 }}>
-          {TFS.map(t => (
-            <button key={t} onClick={() => setTf(t)} style={{
+        {/* TF buttons — intraday group, divider, daily+ group */}
+        <div
+          className="eq-tfrow"
+          style={{ display:'flex', gap:4, alignItems:'center', overflowX:'auto', maxWidth:'100%' }}
+        >
+          {TF_INTRADAY.map(t => (
+            <button key={t} onClick={() => setTf(t)} title={`${t} candles`} style={{
               fontFamily:'var(--sans)', fontSize:12, fontWeight:600, padding:'5px 10px',
               borderRadius:999, border:'none', cursor:'pointer', transition:'all .18s',
-              background: tf===t ? '#009A51' : 'transparent',
-              color: tf===t ? '#fff' : text,
+              background: tf===t ? green : 'transparent',
+              color: tf===t ? '#fff' : text, flexShrink:0,
+            }}>{t}</button>
+          ))}
+          <span style={{ width:1, height:16, background:border, flexShrink:0, margin:'0 3px' }} />
+          {TF_DAILY.map(t => (
+            <button key={t} onClick={() => setTf(t)} title={`${t} candles`} style={{
+              fontFamily:'var(--sans)', fontSize:12, fontWeight:600, padding:'5px 10px',
+              borderRadius:999, border:'none', cursor:'pointer', transition:'all .18s',
+              background: tf===t ? green : 'transparent',
+              color: tf===t ? '#fff' : text, flexShrink:0,
             }}>{t}</button>
           ))}
         </div>
@@ -180,11 +259,22 @@ export default function CandleChart({ symbol, name, theme = 'light' }: CandleCha
         ) : (
           <span style={{ color: text }}>Hover over chart to see OHLCV data</span>
         )}
+        <span style={{ flex:1 }} />
+        {fellBackTo && (
+          <span style={{ color:'#c08a2f', whiteSpace:'nowrap' }} title={`No ${tf} data available for ${symbol}`}>
+            {tf} unavailable — showing {fellBackTo}
+          </span>
+        )}
+        {barCount > 0 && (
+          <span style={{ color: text, whiteSpace:'nowrap', opacity:.75 }}>
+            {barCount.toLocaleString()} bars
+          </span>
+        )}
       </div>
 
       {/* Chart container */}
-      <div style={{ position:'relative', flex:1 }}>
-        <div ref={containerRef} style={{ width:'100%', height:380 }} />
+      <div style={{ position:'relative', flex:1, minHeight: fill ? 320 : 0 }}>
+        <div ref={containerRef} style={{ width:'100%', height: fill ? '100%' : 380, minHeight: fill ? 320 : undefined }} />
         {loading && (
           <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', background: bg + 'cc', flexDirection:'column', gap:12 }}>
             <span style={{ width:28, height:28, border:`3px solid ${grid}`, borderTopColor: green, borderRadius:'50%', display:'inline-block', animation:'spin 0.7s linear infinite' }} />
@@ -198,7 +288,10 @@ export default function CandleChart({ symbol, name, theme = 'light' }: CandleCha
           </div>
         )}
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .eq-tfrow::-webkit-scrollbar { height: 0; }
+      `}</style>
     </div>
   )
 }

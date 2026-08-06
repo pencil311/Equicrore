@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(npx tsc --noEmit -p tsconfig.json 2>&1)",
+      "PowerShell($c = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue; if \\($c\\) { $c | Select-Object -First 1 LocalPort, OwningProcess; Get-Process -Id $c[0].OwningProcess | Select-Object Id, ProcessName } else { \"nothing listening on 3000\" })",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"ProcessId = 19512\" | Select-Object ProcessId, Name, CreationDate, @{n='Cmd';e={$_.CommandLine}} | Format-List)",
+      "PowerShell(Stop-Process -Id 19512 -Force; Start-Sleep -Milliseconds 800; if \\(Test-Path .next\\) { Remove-Item -Recurse -Force .next }; \"dev server stopped; .next cleared: \" + \\(-not \\(Test-Path .next\\)\\))",
+      "Bash(curl -s -o /dev/null -w \"GET /dashboard/performance -> %{http_code} \\(redirect: %{redirect_url}\\)\\\\n\" http://localhost:3000/dashboard/performance)",
+      "Bash(curl -s http://localhost:3000/chartcheck -o /tmp/cc.html -w \"status=%{http_code}\\\\n\")",
+      "Bash(grep -o '<div id=\"probe\">.\\\\{0,80\\\\}' /tmp/cc.html)",
+      "PowerShell(Remove-Item -Recurse -Force c:\\\\Users\\\\Admin\\\\Downloads\\\\equicrore\\\\src\\\\app\\\\chartcheck; \"probe removed: \" + \\(-not \\(Test-Path c:\\\\Users\\\\Admin\\\\Downloads\\\\equicrore\\\\src\\\\app\\\\chartcheck\\)\\))",
+      "Bash(curl -s -o /dev/null -w \"GET / -> %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -s -o /dev/null -w \"GET /login -> %{http_code}\\\\n\" http://localhost:3000/login)",
+      "Bash(grep -n 'Summary bar\\\\|<PLChartsPanel\\\\|<OpenPositionsPanel\\\\|Filter bar\\\\|{/\\\\* Trade log \\\\*/}\\\\|Fullscreen chart viewer' src/app/dashboard/performance/page.tsx)",
+      "Bash(grep -n \"^/\\\\* ---- \\\\|^function \\\\|^const .* = memo\\\\|^export default\" src/app/dashboard/performance/page.tsx)",
+      "Bash(grep -n \"^      </>$\" src/app/dashboard/performance/page.tsx)",
+      "Bash(curl -s -o /dev/null -w \"GET /dashboard/charts -> %{http_code}\\\\n\" http://localhost:3000/dashboard/charts)",
+      "PowerShell(Set-Location c:\\\\Users\\\\Admin\\\\Downloads\\\\equicrore; $env:NEXT_DIST_DIR = '.next-verify'; npx next build 2>&1 | Select-Object -Last 40)",
+      "PowerShell(Set-Location c:\\\\Users\\\\Admin\\\\Downloads\\\\equicrore; if \\(Test-Path .next-verify\\) { Remove-Item -Recurse -Force .next-verify }; git status --porcelain; \"---\"; \"next.config.js clean: \" + \\(-not \\(Select-String -Path next.config.js -Pattern 'NEXT_DIST_DIR' -Quiet\\)\\))",
+      "Bash(curl -s http://localhost:3000/api/_mapcheck -o /tmp/map.json -w \"status=%{http_code}\\\\n\")",
+      "Bash(python -c ' *)",
+      "Bash(curl -s http://localhost:3000/api/mapcheck -o /tmp/map.json -w \"status=%{http_code}\\\\n\")",
+      "Bash(curl -s http://localhost:3000/api/mapcheck)",
+      "Bash(curl -s \"http://localhost:3000/api/candles?symbol=SBIN.NS&tf=1M\")",
+      "Bash(curl -s \"http://localhost:3000/api/candles?symbol=RELIANCE.NS&tf=1M\")",
+      "PowerShell(Set-Location c:\\\\Users\\\\Admin\\\\Downloads\\\\equicrore; Remove-Item -Recurse -Force src\\\\app\\\\api\\\\mapcheck; \"probe removed: \" + \\(-not \\(Test-Path src\\\\app\\\\api\\\\mapcheck\\)\\))",
+      "PowerShell(Set-Location c:\\\\Users\\\\Admin\\\\Downloads\\\\equicrore; $env:NEXT_DIST_DIR = '.next-verify'; npx next build 2>&1 | Select-Object -Last 22)",
+      "Bash(cp /tmp/next.config.bak next.config.js)",
+      "Bash(rm -rf .next-verify)",
+      "Bash(curl -s \"http://localhost:3000/api/candles?symbol=RELIANCE.NS&tf=MAX\")",
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" \"http://localhost:3000/api/candles?symbol=BTC.D&tf=1m\")",
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" \"http://localhost:3000/api/candles?symbol=RELIANCE.NS&tf=bogus\")",
+      "PowerShell(Set-Location c:\\\\Users\\\\Admin\\\\Downloads\\\\equicrore; $env:NEXT_DIST_DIR = '.next-verify'; npx next build 2>&1 | Select-Object -First 12)",
+      "PowerShell(Set-Location c:\\\\Users\\\\Admin\\\\Downloads\\\\equicrore; $env:NEXT_DIST_DIR = '.next-verify'; npx next build 2>&1 | Select-Object -Last 18)"
+    ]
+  }
+}

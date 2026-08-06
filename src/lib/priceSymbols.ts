@@ -94,6 +94,14 @@ for (const cat of watchCategories) {
   }
 }
 
+/** Look up a base ticker (or display name) in the explicit Yahoo table.
+ *  Returns undefined when there is no known mapping — callers can then apply
+ *  their own exchange convention instead of falling back to a `.NS` guess. */
+export function lookupYahoo(base: string): string | undefined {
+  const upper = base.trim().toUpperCase()
+  return YAHOO[NAME_ALIAS[upper] ?? upper]
+}
+
 export interface ResolvedSymbol {
   /** response/cache key — the requested symbol with .NS/.BO stripped */
   key: string

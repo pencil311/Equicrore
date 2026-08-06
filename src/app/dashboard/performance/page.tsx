@@ -6,7 +6,9 @@ import type { TradeRecord } from '@/lib/portfolio'
 import { recalculateHoldings, saveHoldings, saveCash, getStartingCapital } from '@/lib/portfolio'
 import { getUserData, saveUserData } from '@/lib/userStorage'
 import { allSymbols, type WatchSymbol } from '@/lib/watchlists'
+import { toPriceSym } from '@/lib/symbolMap'
 import { useLivePrices, type LivePrice } from '@/hooks/useLivePrices'
+import { InstrumentPicker, fieldStyle } from '@/components/dashboard/PLCharts'
 
 /* ---- Icons ---- */
 const JOURNAL_ICON  = 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z'
@@ -51,13 +53,6 @@ const MODAL: React.CSSProperties = {
   boxShadow: 'var(--sh-lg)', width: '100%', maxWidth: 460,
   animation: 'eqFadeUp .18s var(--ease)',
 }
-const fieldStyle: React.CSSProperties = {
-  width: '100%', border: '1.5px solid var(--line)',
-  borderRadius: 'var(--r-sm)', padding: '8px 12px',
-  fontSize: 14, fontFamily: 'var(--sans)',
-  color: 'var(--ink)', background: 'var(--bg)',
-  outline: 'none', boxSizing: 'border-box',
-}
 const labelStyle: React.CSSProperties = {
   display: 'block', fontSize: 11, fontWeight: 700,
   textTransform: 'uppercase', letterSpacing: '.06em',
@@ -65,11 +60,6 @@ const labelStyle: React.CSSProperties = {
 }
 
 /* ---- Helpers ---- */
-function toPriceSym(tvSym: string): string {
-  const base = tvSym.includes(':') ? tvSym.split(':')[1] : tvSym
-  return base.endsWith('USDT') ? base.slice(0, -4) : base
-}
-
 function readOpenPositions(): OpenPosition[] {
   try { return JSON.parse(localStorage.getItem(OPEN_POS_KEY) || '[]') } catch { return [] }
 }
@@ -374,73 +364,6 @@ function DelBtn({ pending, onDelete, onConfirm, onCancel }: {
     >
       <Ico d={TRASH_ICON} s={14} />
     </button>
-  )
-}
-
-/* ---- InstrumentPicker ---- */
-function InstrumentPicker({ value, onChange }: {
-  value: WatchSymbol | null
-  onChange: (s: WatchSymbol) => void
-}) {
-  const [query, setQuery]   = useState('')
-  const [open, setOpen]     = useState(false)
-  const ref                 = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function h(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [open])
-
-  const results = useMemo(() => {
-    if (!query.trim()) return []
-    const q = query.toLowerCase()
-    return allSymbols
-      .filter(s => s.name.toLowerCase().includes(q) || s.sym.toLowerCase().includes(q))
-      .slice(0, 10)
-  }, [query])
-
-  const displayVal = query || (value ? value.name : '')
-
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <input
-        value={displayVal}
-        placeholder="Search instrument…"
-        onChange={e => { setQuery(e.target.value); setOpen(true) }}
-        onFocus={() => { setOpen(true); if (value) setQuery('') }}
-        style={fieldStyle}
-      />
-      {open && results.length > 0 && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
-          background: 'var(--paper)', border: '1px solid var(--line)',
-          borderRadius: 'var(--r)', boxShadow: 'var(--sh-lg)',
-          maxHeight: 220, overflowY: 'auto', zIndex: 200,
-        }}>
-          {results.map(s => (
-            <button
-              key={s.sym}
-              type="button"
-              onClick={() => { onChange(s); setQuery(''); setOpen(false) }}
-              style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                width: '100%', padding: '9px 14px', gap: 8,
-                background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--bg)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'none' }}
-            >
-              <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>{s.name}</span>
-              <span style={{ fontSize: 11.5, color: 'var(--faint)', flexShrink: 0 }}>{s.category}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -972,8 +895,7 @@ export default function PerformancePage() {
   const [openPositions, setOpenPositions] = useState<OpenPosition[]>([])
   const [showOpenModal, setShowOpenModal] = useState(false)
 
-  /* View tab + record trade modal */
-  const [view, setView]                       = useState<'positions' | 'log'>('positions')
+  /* Record trade modal */
   const [showRecordModal, setShowRecordModal] = useState(false)
   const [editTrade, setEditTrade]             = useState<{ record: TradeRecord; idx: number } | null>(null)
 
@@ -1250,50 +1172,14 @@ export default function PerformancePage() {
         ))}
       </div>
 
-      {/* View tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-        {([
-          ['positions', 'Open Positions', openPositions.length],
-          ['log', 'Trade Log', records.length],
-        ] as const).map(([key, label, count]) => {
-          const active = view === key
-          return (
-            <button
-              key={key}
-              onClick={() => setView(key)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '9px 20px', borderRadius: 100,
-                border: `1.5px solid ${active ? 'var(--green)' : 'var(--line)'}`,
-                background: active ? 'var(--green)' : 'var(--paper)',
-                color: active ? '#fff' : 'var(--muted)',
-                fontWeight: 600, fontSize: 13.5, fontFamily: 'var(--sans)',
-                cursor: 'pointer', transition: 'all .18s var(--ease)',
-              }}
-            >
-              {label}
-              <span style={{
-                padding: '1px 8px', borderRadius: 100, fontSize: 11.5, fontWeight: 700,
-                background: active ? 'rgba(255,255,255,.22)' : 'var(--bg)',
-                color: active ? '#fff' : 'var(--faint)',
-              }}>{count}</span>
-            </button>
-          )
-        })}
-      </div>
-
       {/* Open Positions Panel */}
-      {view === 'positions' && (
-        <OpenPositionsPanel
-          positions={openPositions}
-          livePrices={livePrices}
-          onAdd={() => setShowOpenModal(true)}
-          onPositionClose={handlePositionClosed}
-        />
-      )}
+      <OpenPositionsPanel
+        positions={openPositions}
+        livePrices={livePrices}
+        onAdd={() => setShowOpenModal(true)}
+        onPositionClose={handlePositionClosed}
+      />
 
-      {view === 'log' && (
-      <>
       {/* Filter bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
 
@@ -1477,8 +1363,6 @@ export default function PerformancePage() {
           </>
         )}
       </div>
-      </>
-      )}
 
       {/* Open Position Modal */}
       {showOpenModal && (

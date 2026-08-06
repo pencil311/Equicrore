@@ -11,6 +11,7 @@ const I = {
   bag:    'M6 7V6a4 4 0 0 1 8 0v1M4 7h16l-1 13H5z',
   chart:  'M3 3v18h18M7 14l4-4 3 3 5-6',
   trend:  'M22 7 13.5 15.5l-5-5L2 17',
+  candles:'M7 3v18M4 7h6v8H4zM17 3v18M14 6h6v9h-6z',
   star:   'M12 3l2.6 5.6L21 9.3l-4.5 4.2 1.1 6.1L12 16.8 6.4 19.6l1.1-6.1L3 9.3l6.4-.7z',
   list:   'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
   search: 'M21 21l-4.3-4.3M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16z',
@@ -58,6 +59,7 @@ const nav = [
   { id: 'markets',    icon: I.chart, label: 'Markets',      href: '/dashboard/markets' },
   { id: 'watchlist',  icon: I.star,  label: 'Watchlist',    href: '/dashboard/watchlist' },
   { id: 'performance', icon: I.trend, label: 'Positions', href: '/dashboard/performance' },
+  { id: 'charts',     icon: I.candles, label: 'P&L Charts', href: '/dashboard/charts' },
   { grp: 'Clients' },
   { id: 'clients',    icon: I.users, label: 'Clients',      href: '/dashboard/clients' },
 ]
