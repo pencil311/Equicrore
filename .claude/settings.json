@@ -31,7 +31,16 @@
       "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" \"http://localhost:3000/api/candles?symbol=BTC.D&tf=1m\")",
       "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" \"http://localhost:3000/api/candles?symbol=RELIANCE.NS&tf=bogus\")",
       "PowerShell(Set-Location c:\\\\Users\\\\Admin\\\\Downloads\\\\equicrore; $env:NEXT_DIST_DIR = '.next-verify'; npx next build 2>&1 | Select-Object -First 12)",
-      "PowerShell(Set-Location c:\\\\Users\\\\Admin\\\\Downloads\\\\equicrore; $env:NEXT_DIST_DIR = '.next-verify'; npx next build 2>&1 | Select-Object -Last 18)"
+      "PowerShell(Set-Location c:\\\\Users\\\\Admin\\\\Downloads\\\\equicrore; $env:NEXT_DIST_DIR = '.next-verify'; npx next build 2>&1 | Select-Object -Last 18)",
+      "Bash(curl -s http://localhost:3000/api/curcheck)",
+      "PowerShell(Set-Location c:\\\\Users\\\\Admin\\\\Downloads\\\\equicrore; $env:NEXT_DIST_DIR = '.next-verify'; npx next build 2>&1 | Select-Object -Last 14)",
+      "Bash(awk 'NR>=50 && /^}$/ && NR>60 {print NR; exit}' src/components/dashboard/PLCharts.tsx)",
+      "Bash(sed -n '50,143p' src/components/dashboard/PLCharts.tsx)",
+      "Bash(sed -i '50,143d' src/components/dashboard/PLCharts.tsx)",
+      "PowerShell(Set-Location c:\\\\Users\\\\Admin\\\\Downloads\\\\equicrore; $env:NEXT_DIST_DIR = '.next-verify'; npx next build 2>&1 | Select-Object -Last 12)",
+      "Bash(grep -n \"Open Positions Panel\\\\|{/\\\\* Trade log \\\\*/}\\\\|<OpenPositionsPanel\\\\|className=\\\\\"panel\\\\\"\" src/app/dashboard/performance/page.tsx)",
+      "PowerShell(Set-Location c:\\\\Users\\\\Admin\\\\Downloads\\\\equicrore; $env:NEXT_DIST_DIR = '.next-verify'; npx next build 2>&1 | Select-Object -Last 10)",
+      "Bash(grep -n \"const \\\\[view\\\\|view === \\\\|setView\\\\|id=\\\\\"open-positions\\\\\"\\\\|id=\\\\\"trade-log\\\\\"\\\\|<OpenPositionsPanel\\\\|{/\\\\* Trade log\" src/app/dashboard/performance/page.tsx)"
     ]
   }
 }

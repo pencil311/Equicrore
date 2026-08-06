@@ -7,6 +7,10 @@ interface CandleChartProps {
   theme?: 'light' | 'dark'
   /** Stretch the chart to its container's height instead of the fixed 380px */
   fill?:  boolean
+  /** Override Yahoo's reported currency. Yahoo reports the *proxy feed's*
+   *  currency — MCX crude maps to NYMEX CL=F, so it reports USD — which is
+   *  wrong for the market the user picked. Callers pass the intended one. */
+  currency?: 'INR' | 'USD' | 'NONE'
 }
 
 /* Timeframes mirror /api/candles RANGE_MAP. Intraday first, then daily+ */
@@ -22,6 +26,10 @@ const VISIBLE_BARS = 160
 
 function fmt(n: number, currency: string): string {
   if (!n) return '—'
+  /* Forex pairs are rates, not amounts — no symbol, extra precision */
+  if (currency === 'NONE') {
+    return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 5 })
+  }
   if (currency === 'INR') {
     if (n >= 10_000_000) return '₹' + (n/10_000_000).toFixed(2) + ' Cr'
     if (n >= 100_000)    return '₹' + (n/100_000).toFixed(2) + ' L'
@@ -31,7 +39,7 @@ function fmt(n: number, currency: string): string {
   return n.toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' ' + currency
 }
 
-export default function CandleChart({ symbol, name, theme = 'light', fill = false }: CandleChartProps) {
+export default function CandleChart({ symbol, name, theme = 'light', fill = false, currency: currencyOverride }: CandleChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef     = useRef<any>(null)
   const candleRef    = useRef<any>(null)
@@ -40,7 +48,9 @@ export default function CandleChart({ symbol, name, theme = 'light', fill = fals
   const [tf, setTf]          = useState<TF>('1D')
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
-  const [currency, setCurrency] = useState('INR')
+  const [apiCurrency, setApiCurrency] = useState('INR')
+  /* The caller's market wins; Yahoo's value is only a fallback */
+  const currency = currencyOverride ?? apiCurrency
   const [tooltip, setTooltip]   = useState<{ o:number;h:number;l:number;c:number;v:number;t:number } | null>(null)
   const [livePrice, setLivePrice] = useState<number | null>(null)
   /* Set when the API had to serve a coarser interval than the one requested */
@@ -131,7 +141,7 @@ export default function CandleChart({ symbol, name, theme = 'light', fill = fals
       const data = await res.json()
       if (data.error || !data.candles?.length) { setError('Chart data not available for this instrument.'); setLoading(false); return }
 
-      setCurrency(data.currency || 'INR')
+      setApiCurrency(data.currency || 'INR')
       if (data.regularMarketPrice) setLivePrice(data.regularMarketPrice)
       setFellBackTo(data.fellBack ? (data.intervalLabel || data.tf) : null)
       setBarCount(data.candles.length)

@@ -1,9 +1,9 @@
 'use client'
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { inr } from '@/lib/format'
+import Link from 'next/link'
 import { Ico } from './DashLayout'
 import { allSymbols, watchCategories, type WatchSymbol } from '@/lib/watchlists'
-import { SYM_GROUP, toTicker, toYahooSymbol } from '@/lib/symbolMap'
+import { SYM_GROUP, toTicker, toYahooSymbol, marketCurrency } from '@/lib/symbolMap'
 import { type Theme } from '@/hooks/useTheme'
 import CandleChart from '@/components/ui/CandleChart'
 
@@ -20,9 +20,202 @@ export const fieldStyle: React.CSSProperties = {
   outline: 'none', boxSizing: 'border-box',
 }
 
-function plStr(val: number) {
-  if (val === 0) return '₹0'
-  return `${val > 0 ? '+' : '−'}${inr(Math.abs(val))}`
+/* ---- Indian-style P&L formatting ---- */
+
+/** Compact, for the header pill: +₹62.59K · −₹1.34L · +₹1.2Cr */
+function abbrPL(n: number): string {
+  const a = Math.abs(n)
+  if (a < 0.005) return '₹0'
+  const trim = (v: number, suffix: string) =>
+    v.toFixed(2).replace(/\.?0+$/, '') + suffix
+  const body = a >= 1e7 ? trim(a / 1e7, 'Cr')
+             : a >= 1e5 ? trim(a / 1e5, 'L')
+             : a >= 1e3 ? trim(a / 1e3, 'K')
+             : a.toFixed(2)
+  return `${n > 0 ? '+' : '−'}₹${body}`
+}
+
+/** Full precision with Indian comma grouping: +₹62,586.40 */
+function fullPL(n: number): string {
+  if (Math.abs(n) < 0.005) return '₹0.00'
+  const body = Math.abs(n).toLocaleString('en-IN', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  })
+  return `${n > 0 ? '+' : '−'}₹${body}`
+}
+
+function plColor(n: number): string {
+  return Math.abs(n) < 0.005 ? 'var(--muted)' : n > 0 ? 'var(--pl-gain)' : 'var(--pl-loss)'
+}
+
+/* ---- Broker-style today's P&L: header pill + expandable card ---- */
+
+export interface PLBreakdown {
+  /** Today's realised P&L from trade records (active broker) */
+  realisedToday:       number
+  /** Live P&L across currently open positions */
+  positionsUnrealised: number
+  /** Mark-to-market gain/loss on portfolio holdings */
+  holdingsUnrealised:  number
+}
+
+const PL_NOTE = 'This is your total P&L including holdings, open positions, and today’s recorded trades'
+
+/* Navigation targets. Orders and Positions both live on the Positions page —
+   the hash scrolls to the right section (see the anchors on that page). */
+const PL_NAV = [
+  { label: 'Holdings',  href: '/dashboard/portfolio' },
+  { label: 'Orders',    href: '/dashboard/performance#trade-log' },
+  { label: 'Positions', href: '/dashboard/performance#open-positions' },
+] as const
+
+/* ---- Top-bar navigation: Holdings | Orders | Positions ---- */
+function PLNav() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+      {PL_NAV.map((n, i) => (
+        <span key={n.label} style={{ display: 'flex', alignItems: 'center' }}>
+          {i > 0 && (
+            <span style={{ color: 'var(--line)', margin: '0 9px', fontSize: 13 }}>|</span>
+          )}
+          <Link
+            href={n.href}
+            style={{
+              fontFamily: 'var(--roboto)', fontWeight: 700, fontSize: 13,
+              color: 'var(--ink)', textDecoration: 'none', whiteSpace: 'nowrap',
+              transition: 'color .13s var(--ease)',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--pl-gain)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--ink)' }}
+          >
+            {n.label}
+          </Link>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function PLSummary({ breakdown, open, onToggle }: {
+  breakdown: PLBreakdown
+  open:      boolean
+  onToggle:  () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  /* The collapsed pill mirrors the dashboard's "Today's P/L" stat exactly:
+     realised only. Unrealised lives inside the card, never in this number. */
+  const headline = breakdown.realisedToday
+
+  const realised   = breakdown.realisedToday
+  const unrealised = breakdown.positionsUnrealised + breakdown.holdingsUnrealised
+  const total      = realised + unrealised
+
+  /* Close on outside click */
+  useEffect(() => {
+    if (!open) return
+    function h(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onToggle()
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open, onToggle])
+
+  const label: React.CSSProperties = {
+    fontFamily: 'var(--roboto)', fontWeight: 500, fontSize: 14, color: 'var(--muted)',
+  }
+  const num = (v: number, size = 14): React.CSSProperties => ({
+    fontFamily: 'var(--roboto)', fontWeight: 700, fontSize: size,
+    fontVariantNumeric: 'tabular-nums', color: plColor(v), textAlign: 'right',
+  })
+
+  /* Row labels are bold + ink; only the note and the pill prefix stay secondary */
+  const rowLabel: React.CSSProperties = {
+    fontFamily: 'var(--roboto)', fontWeight: 700, fontSize: 14, color: 'var(--ink)',
+  }
+
+  const Row = ({ k, v }: { k: string; v: number }) => (
+    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 24, padding: '7px 0' }}>
+      <span style={rowLabel}>{k}</span>
+      <span style={num(v)} title={fullPL(v)}>{fullPL(v)}</span>
+    </div>
+  )
+
+  return (
+    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        onClick={onToggle}
+        title={`Today's realised P&L ${fullPL(headline)}`}
+        style={{
+          display: 'flex', alignItems: 'baseline', gap: 8,
+          padding: '7px 14px', borderRadius: 10,
+          border: `1px solid ${open ? 'var(--line)' : 'transparent'}`,
+          background: open ? 'var(--bg)' : 'transparent',
+          cursor: 'pointer', transition: 'all .13s var(--ease)',
+        }}
+      >
+        <span style={{ ...label, fontSize: 13 }}>P&amp;L:</span>
+        <span style={{
+          fontFamily: 'var(--roboto)', fontWeight: 700, fontSize: 25,
+          fontVariantNumeric: 'tabular-nums', lineHeight: 1.1, color: plColor(headline),
+        }}>
+          {abbrPL(headline)}
+        </span>
+        <span style={{
+          color: 'var(--muted)', fontSize: 11, lineHeight: 1,
+          transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s var(--ease)',
+        }}>▾</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 10,
+          width: 340, background: 'var(--paper)', border: '1px solid var(--line)',
+          borderRadius: 'var(--r-lg)', boxShadow: 'var(--sh-lg)',
+          animation: 'eqFadeUp .16s var(--ease)', overflow: 'hidden',
+        }}>
+          <div style={{ padding: '14px 18px 16px' }}>
+            <div style={{
+              fontFamily: 'var(--roboto)', fontWeight: 700, fontSize: 14.5,
+              color: 'var(--ink)', letterSpacing: '-.01em',
+            }}>
+              Overall P&amp;L
+            </div>
+            <div style={{
+              fontFamily: 'var(--roboto)', fontWeight: 700, fontSize: 12.5,
+              color: 'var(--ink)', marginTop: 3,
+            }}>
+              Total P&amp;L
+            </div>
+
+            <div style={{ marginTop: 8, borderTop: '1px solid var(--line)' }}>
+              <Row k="Realised"   v={realised} />
+              <Row k="Unrealised" v={unrealised} />
+            </div>
+
+            <div style={{
+              display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+              gap: 24, paddingTop: 9, borderTop: '1px solid var(--line)',
+            }}>
+              <span style={rowLabel}>Total</span>
+              <span style={num(total, 15.5)} title={fullPL(total)}>{fullPL(total)}</span>
+            </div>
+
+            {/* Explanatory note — regular weight, secondary */}
+            <div style={{
+              marginTop: 14, padding: '9px 12px',
+              border: '1px solid var(--line)', borderRadius: 'var(--r-sm)',
+              background: 'var(--bg)',
+              fontFamily: 'var(--roboto)', fontWeight: 400, fontSize: 11.5,
+              fontStyle: 'italic', color: 'var(--faint)', lineHeight: 1.5,
+            }}>
+              {PL_NOTE}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 /* ---- Searchable instrument picker (also used by the Positions modals) ---- */
@@ -250,17 +443,21 @@ export function PLChartsPanel({ traded, onOpen }: {
 }
 
 /* ---- Fullscreen chart viewer ---- */
-export function FullscreenChart({ symbol, todayPL, realisedPL, unrealisedPL, theme, onClose }: {
+export function FullscreenChart({ symbol, breakdown, theme, onClose }: {
   symbol:       WatchSymbol
-  todayPL:      number
-  realisedPL:   number
-  unrealisedPL: number
+  breakdown:    PLBreakdown
   theme:        Theme
   onClose:      () => void
 }) {
-  /* ESC to close + lock body scroll while open */
+  const [plOpen, setPlOpen] = useState(false)
+
+  /* ESC closes the P&L card first, then the overlay. Body scroll locked while open. */
   useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      if (plOpen) setPlOpen(false)
+      else onClose()
+    }
     document.addEventListener('keydown', onKey)
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -268,20 +465,11 @@ export function FullscreenChart({ symbol, todayPL, realisedPL, unrealisedPL, the
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = prevOverflow
     }
-  }, [onClose])
+  }, [onClose, plOpen])
 
-  const yahoo = toYahooSymbol(symbol.sym)
-  const color = SYM_GROUP[symbol.sym]?.color ?? 'var(--green)'
-  const up    = todayPL >= 0
-
-  const miniLabel: React.CSSProperties = {
-    fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-    letterSpacing: '.06em', color: 'var(--faint)',
-  }
-  const miniVal = (v: number): React.CSSProperties => ({
-    fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-    color: v === 0 ? 'var(--muted)' : v > 0 ? 'var(--gain)' : 'var(--loss)',
-  })
+  const yahoo    = toYahooSymbol(symbol.sym)
+  const color    = SYM_GROUP[symbol.sym]?.color ?? 'var(--green)'
+  const currency = marketCurrency(symbol.sym)
 
   return (
     <div style={{
@@ -332,27 +520,18 @@ export function FullscreenChart({ symbol, todayPL, realisedPL, unrealisedPL, the
 
         <div style={{ flex: 1 }} />
 
-        {/* Account-wide today's P&L */}
-        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <div style={miniLabel}>Today&rsquo;s P&amp;L</div>
-          <div style={{
-            fontFamily: 'var(--serif)', fontSize: 30, fontWeight: 700, lineHeight: 1.15,
-            fontVariantNumeric: 'tabular-nums', marginTop: 2,
-            color: todayPL === 0 ? 'var(--ink)' : up ? 'var(--gain)' : 'var(--loss)',
-          }}>
-            {plStr(todayPL)}
-          </div>
-          <div style={{ display: 'flex', gap: 16, justifyContent: 'flex-end', marginTop: 5 }}>
-            <span style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-              <span style={miniLabel}>Realised</span>
-              <span style={miniVal(realisedPL)}>{plStr(realisedPL)}</span>
-            </span>
-            <span style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-              <span style={miniLabel}>Unrealised</span>
-              <span style={miniVal(unrealisedPL)}>{plStr(unrealisedPL)}</span>
-            </span>
-          </div>
-        </div>
+        {/* Section navigation, left of the P&L pill */}
+        <PLNav />
+        <span style={{
+          width: 1, height: 22, background: 'var(--line)', flexShrink: 0, margin: '0 -6px',
+        }} />
+
+        {/* Account-wide today's P&L — from the user's records, not this instrument */}
+        <PLSummary
+          breakdown={breakdown}
+          open={plOpen}
+          onToggle={() => setPlOpen(o => !o)}
+        />
 
         <button
           onClick={onClose}
@@ -382,7 +561,7 @@ export function FullscreenChart({ symbol, todayPL, realisedPL, unrealisedPL, the
           Explicit height rather than flex:1 — a percentage/flex chain can resolve
           to 0px before layout settles, which left the canvas invisible. */}
       <div style={{ flex: 1, minHeight: 0, height: `calc(100vh - ${TOPBAR_H}px)` }}>
-        <CandleChart symbol={yahoo} name={symbol.name} theme={theme} fill />
+        <CandleChart symbol={yahoo} name={symbol.name} theme={theme} currency={currency} fill />
       </div>
     </div>
   )

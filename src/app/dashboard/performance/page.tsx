@@ -895,7 +895,8 @@ export default function PerformancePage() {
   const [openPositions, setOpenPositions] = useState<OpenPosition[]>([])
   const [showOpenModal, setShowOpenModal] = useState(false)
 
-  /* Record trade modal */
+  /* View tab + record trade modal */
+  const [view, setView]                       = useState<'positions' | 'log'>('positions')
   const [showRecordModal, setShowRecordModal] = useState(false)
   const [editTrade, setEditTrade]             = useState<{ record: TradeRecord; idx: number } | null>(null)
 
@@ -931,6 +932,18 @@ export default function PerformancePage() {
   /* Load open positions on mount */
   useEffect(() => {
     setOpenPositions(readOpenPositions())
+  }, [])
+
+  /* Honour #open-positions / #trade-log when arriving from the P&L card.
+     Both panels are tabbed, so the hash selects the tab as well as scrolling. */
+  useEffect(() => {
+    const id = window.location.hash.slice(1)
+    if (id !== 'open-positions' && id !== 'trade-log') return
+    setView(id === 'trade-log' ? 'log' : 'positions')
+    const t = setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 100)
+    return () => clearTimeout(t)
   }, [])
 
   /* Live prices for open positions (5 s interval) */
@@ -1172,14 +1185,52 @@ export default function PerformancePage() {
         ))}
       </div>
 
-      {/* Open Positions Panel */}
-      <OpenPositionsPanel
-        positions={openPositions}
-        livePrices={livePrices}
-        onAdd={() => setShowOpenModal(true)}
-        onPositionClose={handlePositionClosed}
-      />
+      {/* View tabs — only the selected panel renders */}
+      <div id="open-positions" style={{ scrollMarginTop: 20 }} />
+      <div id="trade-log" style={{ scrollMarginTop: 20 }} />
+      <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+        {([
+          ['positions', 'Open Positions', openPositions.length],
+          ['log', 'Trade Log', records.length],
+        ] as const).map(([key, label, count]) => {
+          const active = view === key
+          return (
+            <button
+              key={key}
+              onClick={() => setView(key)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '9px 20px', borderRadius: 100,
+                border: `1.5px solid ${active ? 'var(--green)' : 'var(--line)'}`,
+                background: active ? 'var(--green)' : 'var(--paper)',
+                color: active ? '#fff' : 'var(--muted)',
+                fontWeight: 600, fontSize: 13.5, fontFamily: 'var(--sans)',
+                cursor: 'pointer', transition: 'all .18s var(--ease)',
+              }}
+            >
+              {label}
+              <span style={{
+                padding: '1px 8px', borderRadius: 100, fontSize: 11.5, fontWeight: 700,
+                background: active ? 'rgba(255,255,255,.22)' : 'var(--bg)',
+                color: active ? '#fff' : 'var(--faint)',
+              }}>{count}</span>
+            </button>
+          )
+        })}
+      </div>
 
+      {/* Open Positions Panel */}
+      {view === 'positions' && (
+        <OpenPositionsPanel
+          positions={openPositions}
+          livePrices={livePrices}
+          onAdd={() => setShowOpenModal(true)}
+          onPositionClose={handlePositionClosed}
+        />
+      )}
+
+      {view === 'log' && (
+      <>
       {/* Filter bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
 
@@ -1363,6 +1414,8 @@ export default function PerformancePage() {
           </>
         )}
       </div>
+      </>
+      )}
 
       {/* Open Position Modal */}
       {showOpenModal && (

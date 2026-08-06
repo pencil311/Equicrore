@@ -71,6 +71,27 @@ export function toYahooSymbol(tvSym: string): string {
   return base
 }
 
+/** How a price should be labelled, decided by the market the instrument
+ *  belongs to rather than by whatever Yahoo reports for the proxy feed.
+ *  'NONE' means print the bare rate with no currency symbol (forex pairs). */
+export type DisplayCurrency = 'INR' | 'USD' | 'NONE'
+
+const INR_EX  = new Set(['NSE', 'BSE', 'MCX', 'NCDEX'])
+const USD_EX  = new Set([
+  'NASDAQ', 'NYSE', 'AMEX', 'ARCA', 'BATS', 'OTC',
+  'SP', 'DJ', 'CBOE', 'CBOT', 'CME', 'NYMEX', 'COMEX',
+  'BINANCE', 'COINBASE', 'BITSTAMP', 'KRAKEN', 'BYBIT',
+])
+const RATE_EX = new Set(['FX', 'FX_IDC', 'OANDA', 'FOREXCOM'])
+
+export function marketCurrency(tvSym: string): DisplayCurrency | undefined {
+  const ex = tvSym.includes(':') ? tvSym.slice(0, tvSym.indexOf(':')).toUpperCase() : ''
+  if (RATE_EX.has(ex)) return 'NONE'
+  if (INR_EX.has(ex))  return 'INR'
+  if (USD_EX.has(ex))  return 'USD'
+  return undefined   // unknown exchange (TVC, XETRA…) — keep Yahoo's own currency
+}
+
 /** Resolve a trade record back to a watchlist entry so it can be charted.
  *  Falls back to a synthetic entry for instruments no longer in the watchlists. */
 export function findWatchSymbol(sym: string, name?: string, category?: string): WatchSymbol {

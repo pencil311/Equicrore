@@ -4,6 +4,7 @@
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@500;700&display=swap');
 
 /* ---------- Light theme (default) ---------- */
 :root {
@@ -39,6 +40,10 @@
   /* Typography */
   --serif: 'Spectral', Georgia, serif;
   --sans:  'Hanken Grotesk', system-ui, sans-serif;
+  /* Broker-style numeric readouts (P&L panels) */
+  --roboto: 'Roboto', system-ui, sans-serif;
+  --pl-gain: #00d09c;
+  --pl-loss: #ff5b5b;
 
   /* Shape */
   --r-sm: 8px;
