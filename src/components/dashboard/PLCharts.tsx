@@ -4,6 +4,10 @@ import Link from 'next/link'
 import { Ico } from './DashLayout'
 import { allSymbols, watchCategories, type WatchSymbol } from '@/lib/watchlists'
 import { SYM_GROUP, toTicker, toYahooSymbol, marketCurrency } from '@/lib/symbolMap'
+import {
+  CHART_LAYOUTS, DEFAULT_LAYOUT, layoutById, paneArea, gridStyle, thumbRects,
+  readSavedLayout, writeSavedLayout, type ChartLayout, type PaneState,
+} from '@/lib/chartLayouts'
 import { type Theme } from '@/hooks/useTheme'
 import CandleChart from '@/components/ui/CandleChart'
 
@@ -68,6 +72,202 @@ const PL_NAV = [
   { label: 'Orders',    href: '/dashboard/performance#trade-log' },
   { label: 'Positions', href: '/dashboard/performance#open-positions' },
 ] as const
+
+/* ---- Layout picker: thumbnails drawn from the same grid spec as the panes ---- */
+const GRID_ICON = 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z'
+
+function LayoutThumb({ layout, active }: { layout: ChartLayout; active: boolean }) {
+  const S = 26
+  const stroke = active ? 'var(--green)' : 'var(--faint)'
+  return (
+    <svg width={S} height={S} viewBox={`0 0 ${S} ${S}`} style={{ display: 'block' }}>
+      {thumbRects(layout, S, 2.5).map((r, i) => (
+        <rect
+          key={i} x={r.x} y={r.y} width={r.w} height={r.h} rx={1.5}
+          fill={active ? 'var(--green)' : 'transparent'}
+          fillOpacity={active ? 0.18 : 1}
+          stroke={stroke} strokeWidth={1.3}
+        />
+      ))}
+    </svg>
+  )
+}
+
+function LayoutPicker({ value, onChange }: {
+  value: ChartLayout
+  onChange: (l: ChartLayout) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function h(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+
+  /* Grouped by pane count, matching the rows in the picker */
+  const groups = useMemo(() => {
+    const by = new Map<number, ChartLayout[]>()
+    CHART_LAYOUTS.forEach(l => {
+      if (!by.has(l.panes)) by.set(l.panes, [])
+      by.get(l.panes)!.push(l)
+    })
+    return Array.from(by.entries()).sort((a, b) => a[0] - b[0])
+  }, [])
+
+  return (
+    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        title="Chart layout"
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: 38, height: 38, borderRadius: '50%',
+          border: `1.5px solid ${open ? 'var(--green)' : 'var(--line)'}`,
+          background: open ? 'var(--bg)' : 'var(--paper)',
+          color: open ? 'var(--green)' : 'var(--muted)',
+          cursor: 'pointer', transition: 'all .13s var(--ease)',
+        }}
+      >
+        <Ico d={GRID_ICON} s={17} />
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 20,
+          padding: '12px 14px 14px', background: 'var(--paper)',
+          border: '1px solid var(--line)', borderRadius: 'var(--r-lg)',
+          boxShadow: 'var(--sh-lg)', animation: 'eqFadeUp .16s var(--ease)',
+        }}>
+          {groups.map(([count, items]) => (
+            <div key={count} style={{ marginBottom: 10 }}>
+              <div style={{
+                fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '.06em', color: 'var(--faint)', marginBottom: 6,
+              }}>
+                {count} chart{count === 1 ? '' : 's'}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {items.map(l => {
+                  const active = l.id === value.id
+                  return (
+                    <button
+                      key={l.id}
+                      onClick={() => { onChange(l); setOpen(false) }}
+                      title={l.label}
+                      style={{
+                        display: 'flex', padding: 5, borderRadius: 7, cursor: 'pointer',
+                        border: `1.5px solid ${active ? 'var(--green)' : 'var(--line)'}`,
+                        background: active ? 'var(--bg)' : 'transparent',
+                        transition: 'all .13s var(--ease)',
+                      }}
+                    >
+                      <LayoutThumb layout={l} active={active} />
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ---- One chart pane: its own instrument picker + its own CandleChart ---- */
+function ChartPane({ pane, index, onChange, theme, compact, delayMs }: {
+  pane:     PaneState
+  index:    number
+  onChange: (next: PaneState) => void
+  theme:    Theme
+  compact:  boolean
+  delayMs:  number
+}) {
+  const [picking, setPicking] = useState(false)
+  const sym = pane.sym ? allSymbols.find(s => s.sym === pane.sym) ?? null : null
+
+  return (
+    <div style={{
+      gridArea: paneArea(index),
+      display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0,
+      borderLeft: '1px solid var(--line)', borderTop: '1px solid var(--line)',
+      overflow: 'hidden',
+    }}>
+      {/* Pane header — compact instrument selector */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
+        borderBottom: '1px solid var(--line)', background: 'var(--paper)', flexShrink: 0,
+      }}>
+        {picking || !sym ? (
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <InstrumentPicker
+              value={sym}
+              onChange={s => { onChange({ ...pane, sym: s.sym }); setPicking(false) }}
+            />
+          </div>
+        ) : (
+          <>
+            <button
+              onClick={() => setPicking(true)}
+              title="Change instrument"
+              style={{
+                display: 'flex', alignItems: 'baseline', gap: 7, minWidth: 0,
+                padding: '3px 8px', borderRadius: 7, cursor: 'pointer',
+                border: '1px solid transparent', background: 'transparent',
+                fontFamily: 'var(--sans)',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+            >
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap' }}>
+                {toTicker(sym.sym)}
+              </span>
+              <span style={{
+                fontSize: 11, color: 'var(--faint)', minWidth: 0,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>{sym.name}</span>
+              <span style={{ fontSize: 9, color: 'var(--faint)' }}>▾</span>
+            </button>
+            <div style={{ flex: 1 }} />
+          </>
+        )}
+      </div>
+
+      {/* Chart, or an empty-pane prompt */}
+      <div style={{ flex: 1, minHeight: 0 }}>
+        {sym ? (
+          <CandleChart
+            key={sym.sym}
+            symbol={toYahooSymbol(sym.sym)}
+            name={sym.name}
+            theme={theme}
+            currency={marketCurrency(sym.sym)}
+            initialTf={pane.tf}
+            onTfChange={tf => onChange({ ...pane, tf })}
+            startDelayMs={delayMs}
+            minChartHeight={compact ? 90 : 320}
+            compact={compact}
+            fill
+          />
+        ) : (
+          <div style={{
+            height: '100%', display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: 8,
+            color: 'var(--faint)', fontSize: 13, background: 'var(--bg)',
+          }}>
+            <Ico d={CHART_ICON} s={26} />
+            Select instrument
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 /* ---- Top-bar navigation: Holdings | Orders | Positions ---- */
 function PLNav() {
@@ -451,6 +651,41 @@ export function FullscreenChart({ symbol, breakdown, theme, onClose }: {
 }) {
   const [plOpen, setPlOpen] = useState(false)
 
+  /* Split-screen layout. Pane 0 always starts on the instrument that was
+     opened; the rest restore from the saved layout, or start empty. */
+  const [layout, setLayout] = useState<ChartLayout>(DEFAULT_LAYOUT)
+  const [panes, setPanes]   = useState<PaneState[]>([{ sym: symbol.sym, tf: '1D' }])
+
+  useEffect(() => {
+    const saved = readSavedLayout()
+    const l = saved ? layoutById(saved.layout) : DEFAULT_LAYOUT
+    setLayout(l)
+    setPanes(Array.from({ length: l.panes }, (_, i) => {
+      if (i === 0) return { sym: symbol.sym, tf: saved?.panes?.[0]?.tf ?? '1D' }
+      return saved?.panes?.[i] ?? { sym: null, tf: '1D' }
+    }))
+    /* Pane 0 follows whichever instrument was opened, so this intentionally
+       re-seeds when the user opens a different symbol. */
+  }, [symbol.sym])
+
+  /* Persist layout + per-pane symbol/timeframe */
+  useEffect(() => {
+    writeSavedLayout({ layout: layout.id, panes })
+  }, [layout, panes])
+
+  function changeLayout(next: ChartLayout) {
+    setLayout(next)
+    setPanes(prev => Array.from({ length: next.panes }, (_, i) =>
+      prev[i] ?? { sym: null, tf: '1D' }
+    ))
+  }
+
+  function updatePane(i: number, next: PaneState) {
+    setPanes(prev => prev.map((p, idx) => (idx === i ? next : p)))
+  }
+
+  const isSplit = layout.panes > 1
+
   /* ESC closes the P&L card first, then the overlay. Body scroll locked while open. */
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -533,6 +768,8 @@ export function FullscreenChart({ symbol, breakdown, theme, onClose }: {
           onToggle={() => setPlOpen(o => !o)}
         />
 
+        <LayoutPicker value={layout} onChange={changeLayout} />
+
         <button
           onClick={onClose}
           title="Close (Esc)"
@@ -557,11 +794,36 @@ export function FullscreenChart({ symbol, breakdown, theme, onClose }: {
         </button>
       </div>
 
-      {/* Chart fills the rest of the viewport.
+      {/* Charts fill the rest of the viewport.
           Explicit height rather than flex:1 — a percentage/flex chain can resolve
           to 0px before layout settles, which left the canvas invisible. */}
       <div style={{ flex: 1, minHeight: 0, height: `calc(100vh - ${TOPBAR_H}px)` }}>
-        <CandleChart symbol={yahoo} name={symbol.name} theme={theme} currency={currency} fill />
+        {!isSplit ? (
+          /* Single layout keeps the original behaviour exactly: no pane header,
+             instrument comes from the top bar. */
+          <CandleChart symbol={yahoo} name={symbol.name} theme={theme} currency={currency} fill />
+        ) : (
+          <div style={{
+            ...gridStyle(layout),
+            height: '100%', width: '100%',
+            /* Panes draw their own top/left rules, so trim the outer edges */
+            marginTop: -1, marginLeft: -1,
+          }}>
+            {panes.slice(0, layout.panes).map((p, i) => (
+              <ChartPane
+                key={`${layout.id}-${i}`}
+                pane={p}
+                index={i}
+                onChange={next => updatePane(i, next)}
+                theme={theme}
+                compact
+                /* Stagger startup ~400ms apart so the panes don't burst-request
+                   /api/candles and /api/prices and trip Yahoo's rate limit. */
+                delayMs={i * 400}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
