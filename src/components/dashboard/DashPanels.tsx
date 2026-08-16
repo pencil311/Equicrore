@@ -8,6 +8,7 @@ import { perfData, leaderboard, type WatchlistItem } from '@/lib/mockData'
 import { type PortfolioHolding, type TradeRecord } from '@/lib/portfolio'
 import { saveUserData } from '@/lib/userStorage'
 import { Ico } from './DashLayout'
+import DateField from '@/components/ui/DateField'
 
 const I = {
   bag: 'M6 7V6a4 4 0 0 1 8 0v1M4 7h16l-1 13H5z',
@@ -452,10 +453,9 @@ export function RecordModal({ open, sym, name, color, onClose, onSubmit }: Recor
               {/* Date */}
               <div className="field">
                 <label>Date</label>
-                <input
-                  type="date"
+                <DateField
                   value={date}
-                  onChange={e => setDate(e.target.value)}
+                  onChange={setDate}
                   style={{
                     width: '100%', border: '1.5px solid var(--line)', borderRadius: 'var(--r-sm)',
                     padding: '10px 12px', fontSize: 14, fontFamily: 'var(--sans)',

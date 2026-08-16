@@ -9,6 +9,7 @@ import { allSymbols, type WatchSymbol } from '@/lib/watchlists'
 import { toPriceSym } from '@/lib/symbolMap'
 import { useLivePrices, type LivePrice } from '@/hooks/useLivePrices'
 import { InstrumentPicker, fieldStyle } from '@/components/dashboard/PLCharts'
+import DateField from '@/components/ui/DateField'
 
 /* ---- Icons ---- */
 const JOURNAL_ICON  = 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z'
@@ -714,7 +715,7 @@ const RecordTradeModal = memo(function RecordTradeModal({ initial, onClose, onSa
         />
 
         <label style={labelStyle}>Date</label>
-        <input type="date" value={date} onChange={e => setDate(e.target.value)} style={fieldStyle} />
+        <DateField value={date} onChange={setDate} style={fieldStyle} />
 
         <label style={labelStyle}>Category</label>
         <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 6 }}>
@@ -1269,11 +1270,11 @@ export default function PerformancePage() {
               <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 11, color: 'var(--faint)', marginBottom: 4 }}>From</div>
-                  <input type="date" value={draftFrom} onChange={e => setDraftFrom(e.target.value)} style={dateInputStyle} />
+                  <DateField value={draftFrom} onChange={setDraftFrom} style={dateInputStyle} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 11, color: 'var(--faint)', marginBottom: 4 }}>To</div>
-                  <input type="date" value={draftTo} onChange={e => setDraftTo(e.target.value)} style={dateInputStyle} />
+                  <DateField value={draftTo} onChange={setDraftTo} style={dateInputStyle} />
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

@@ -8,6 +8,7 @@ import { Ico } from '@/components/dashboard/DashLayout'
 import { type Client, type ClientEntry, loadClients, updateClient } from '@/lib/clients'
 import { getUserData, saveUserData } from '@/lib/userStorage'
 import { allSymbols } from '@/lib/watchlists'
+import DateField from '@/components/ui/DateField'
 
 const PLUS_ICON     = 'M12 5v14M5 12h14'
 const CHECK_ICON    = 'M20 6 9 17l-5-5'
@@ -777,11 +778,11 @@ export default function ClientDetailPage() {
                 <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 11, color: 'var(--faint)', marginBottom: 4 }}>From</div>
-                    <input type="date" value={draftFrom} onChange={e => setDraftFrom(e.target.value)} style={dateInputStyle} />
+                    <DateField value={draftFrom} onChange={setDraftFrom} style={dateInputStyle} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 11, color: 'var(--faint)', marginBottom: 4 }}>To</div>
-                    <input type="date" value={draftTo} onChange={e => setDraftTo(e.target.value)} style={dateInputStyle} />
+                    <DateField value={draftTo} onChange={setDraftTo} style={dateInputStyle} />
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -1010,7 +1011,7 @@ export default function ClientDetailPage() {
               <div className="modal-body">
                 <div className="field">
                   <label>Date</label>
-                  <input type="date" style={inputStyle} value={entryDate} onChange={e => setEntryDate(e.target.value)} />
+                  <DateField style={inputStyle} value={entryDate} onChange={setEntryDate} />
                 </div>
                 <div className="field">
                   <label>Market / Instrument</label>
@@ -1078,7 +1079,7 @@ export default function ClientDetailPage() {
               <div className="modal-body">
                 <div className="field">
                   <label>Date</label>
-                  <input type="date" style={inputStyle} value={editDate} onChange={e => setEditDate(e.target.value)} />
+                  <DateField style={inputStyle} value={editDate} onChange={setEditDate} />
                 </div>
                 <div className="field">
                   <label>Market / Instrument</label>

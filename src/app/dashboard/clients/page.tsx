@@ -6,6 +6,7 @@ import { inr, localDateISO } from '@/lib/format'
 import { Ico } from '@/components/dashboard/DashLayout'
 import { type Client, loadClients, saveClients } from '@/lib/clients'
 import { getUserData, saveUserData } from '@/lib/userStorage'
+import DateField from '@/components/ui/DateField'
 
 const USERS_ICON  = 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75M9 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0'
 const PLUS_ICON   = 'M12 5v14M5 12h14'
@@ -504,11 +505,11 @@ export default function ClientsPage() {
                     <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 11, color: 'var(--faint)', marginBottom: 4 }}>From</div>
-                        <input type="date" value={draftFrom} onChange={e => setDraftFrom(e.target.value)} style={dateInputStyle} />
+                        <DateField value={draftFrom} onChange={setDraftFrom} style={dateInputStyle} />
                       </div>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 11, color: 'var(--faint)', marginBottom: 4 }}>To</div>
-                        <input type="date" value={draftTo} onChange={e => setDraftTo(e.target.value)} style={dateInputStyle} />
+                        <DateField value={draftTo} onChange={setDraftTo} style={dateInputStyle} />
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

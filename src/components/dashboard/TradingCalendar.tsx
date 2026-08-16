@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { inr, localDateISO } from '@/lib/format'
 import type { TradeRecord } from '@/lib/portfolio'
 import { Ico } from './DashLayout'
+import DateField from '@/components/ui/DateField'
 
 /* ---- Icons ---- */
 const CHEV_LEFT  = 'M15 18l-6-6 6-6'
@@ -408,18 +409,16 @@ export function TradingCalendar({ records }: { records: TradeRecord[] }) {
         </Field>
 
         <Field label="Date range" width={252}>
-          <input
-            type="date"
+          <DateField
             value={draft.from}
-            onChange={e => setDraft(d => ({ ...d, from: e.target.value }))}
-            style={bareInput}
+            onChange={v => setDraft(d => ({ ...d, from: v }))}
+            style={{ ...bareInput, flex: 1, height: '100%' }}
           />
           <span style={{ color: 'var(--faint)', fontSize: 13 }}>~</span>
-          <input
-            type="date"
+          <DateField
             value={draft.to}
-            onChange={e => setDraft(d => ({ ...d, to: e.target.value }))}
-            style={bareInput}
+            onChange={v => setDraft(d => ({ ...d, to: v }))}
+            style={{ ...bareInput, flex: 1, height: '100%' }}
           />
         </Field>
 
