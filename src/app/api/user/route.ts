@@ -14,6 +14,9 @@ export async function PATCH(req: NextRequest) {
   if (!cleanName) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
 
   await connectDB()
+  /* Deliberately the signed-in account's own id, NOT dataUserId(): this edits
+     the profile, so an aliased account must rename itself and not the account
+     whose data it shares. */
   const userId = (session.user as any).id
   await User.findByIdAndUpdate(userId, { name: cleanName })
 

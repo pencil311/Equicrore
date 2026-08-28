@@ -18,6 +18,7 @@ import bcrypt from 'bcryptjs'
 import { connectDB } from '@/lib/db'
 import User from '@/models/User'
 import Portfolio from '@/models/Portfolio'
+import { dataOwnerEmail, isAliased, isEmailAllowed } from '@/lib/accountAliases'
 
 /* In-memory rate limiter keyed by email — 5 failures = 15 min block */
 const loginAttempts = new Map<string, { count: number; blockedUntil: number }>()
@@ -76,6 +77,10 @@ export const authOptions: NextAuthOptions = {
   session: { strategy: 'jwt', maxAge: 24 * 60 * 60, updateAge: 60 * 60 },
   callbacks: {
     async signIn({ user, account }) {
+      /* Allow-list gate. With ALLOWED_EMAILS unset this is a no-op, so an
+         environment that hasn't been configured yet still behaves as before. */
+      if (!isEmailAllowed(user.email)) return false
+
       if (account?.provider === 'google') {
         await connectDB()
         const existing = await User.findOne({ email: user.email })
@@ -109,12 +114,34 @@ export const authOptions: NextAuthOptions = {
         } else {
           token.id = user.id
         }
+        /* Re-resolve on every fresh sign-in so an alias added later takes
+           effect without having to clear an existing token. */
+        delete (token as any).dataId
+      }
+
+      /* Which account's data this session operates on. Resolved once and
+         cached on the token; only an unresolved alias costs a lookup. */
+      if (token.id && !(token as any).dataId) {
+        const email = token.email as string | undefined
+        if (isAliased(email)) {
+          await connectDB()
+          const owner = await User.findOne({ email: dataOwnerEmail(email) })
+          /* If the aliased-to account doesn't exist yet, leave dataId unset:
+             the session falls back to this user's own id, and the lookup is
+             retried on the next request, so it self-heals once created. */
+          if (owner) (token as any).dataId = owner._id.toString()
+        } else {
+          (token as any).dataId = token.id
+        }
       }
       return token
     },
     async session({ session, token }) {
       if (token && session.user) {
-        (session.user as any).id = token.id as string
+        /* id     = who signed in (profile edits)
+           dataId = whose data to read/write (holdings, records, clients…) */
+        (session.user as any).id     = token.id as string
+        ;(session.user as any).dataId = ((token as any).dataId as string) || (token.id as string)
       }
       return session
     },

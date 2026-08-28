@@ -3,13 +3,14 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { connectDB } from '@/lib/db'
 import Portfolio from '@/models/Portfolio'
+import { dataUserId } from '@/lib/accountAliases'
 
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   await connectDB()
-  const portfolio = await Portfolio.findOne({ userId: (session.user as any).id })
+  const portfolio = await Portfolio.findOne({ userId: dataUserId(session) })
   if (!portfolio) return NextResponse.json({ error: 'Portfolio not found' }, { status: 404 })
 
   return NextResponse.json(portfolio)
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
   await connectDB()
 
   const portfolio = await Portfolio.findOneAndUpdate(
-    { userId: (session.user as any).id },
+    { userId: dataUserId(session) },
     { ...body, updatedAt: new Date() },
     { new: true, upsert: true }
   )
