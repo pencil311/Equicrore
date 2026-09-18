@@ -14,6 +14,11 @@ export function useCountUp(target: number, duration = 1100): number {
     cancelAnimationFrame(ref.current.raf)
     const from = ref.current.val
     const to = target
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      ref.current.val = to
+      setVal(to)
+      return
+    }
     const t0 = performance.now()
 
     function tick(t: number) {

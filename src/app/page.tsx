@@ -1,9 +1,12 @@
 'use client'
-import { useEffect } from 'react'
+import { useRef } from 'react'
 import { useSession } from 'next-auth/react'
+import { motion, useScroll, useSpring, useTransform, type Variants } from 'motion/react'
 import Nav from '@/components/layout/Nav'
 import HeroSparkline from '@/components/ui/HeroSparkline'
 import FeatChart from '@/components/ui/FeatChart'
+import LoopVideo, { useReducedMotionMounted } from '@/components/motion/LoopVideo'
+import ZoomBridge from '@/components/motion/ZoomBridge'
 
 const portfolio = [
   { rank: 1, name: 'Reliance Industries', symbol: 'RELIANCE', value: '₹4,82,350', ret: '+18.4%', gain: true },
@@ -19,6 +22,43 @@ const markets = [
   { flag: '₿', name: 'Crypto', desc: 'Top cryptocurrencies by market cap. BTC, ETH, and leading altcoins in INR.', tickers: ['BTC', 'ETH', 'SOL', 'ADA', 'MATIC'], delay: '.16s' },
 ]
 
+const stats = [
+  { num: '500+', label: 'Trackable assets' },
+  { num: '3',    label: 'Markets covered' },
+  { num: '₹0',  label: 'Platform fees' },
+  { num: 'Live', label: 'Price updates' },
+]
+
+const ease = [0.23, 1, 0.32, 1] as const
+const inView = { initial: 'hidden', whileInView: 'show', viewport: { once: true, amount: 0.2 } } as const
+const group = (stagger: number): Variants => ({ show: { transition: { staggerChildren: stagger } } })
+const rise: Variants = {
+  hidden: { opacity: 0, y: 18 },
+  show:   { opacity: 1, y: 0, transition: { duration: 0.6, ease } },
+}
+const slide: Variants = {
+  hidden: { opacity: 0, x: -16 },
+  show:   { opacity: 1, x: 0, transition: { duration: 0.55, ease } },
+}
+const settle: Variants = {
+  hidden: { opacity: 0, scale: 0.95 },
+  show:   { opacity: 1, scale: 1, transition: { duration: 0.55, ease } },
+}
+const tableIn: Variants = {
+  hidden: { opacity: 0, y: 18 },
+  show:   { opacity: 1, y: 0, transition: { duration: 0.6, ease, staggerChildren: 0.045, delayChildren: 0.15 } },
+}
+const rowIn: Variants = {
+  hidden: { opacity: 0, y: 8 },
+  show:   { opacity: 1, y: 0, transition: { duration: 0.35, ease } },
+}
+
+function ScrollProgress() {
+  const { scrollYProgress } = useScroll()
+  const scaleX = useSpring(scrollYProgress, { stiffness: 200, damping: 40, restDelta: 0.001 })
+  return <motion.div className="scroll-progress" style={{ scaleX }} />
+}
+
 const steps = [
   { n: '01', title: 'Add your holdings', body: 'Enter your stocks, ETFs, and crypto positions once. The dashboard remembers everything.' },
   { n: '02', title: 'Prices update live', body: 'Real-time feeds from Yahoo Finance and CoinGecko keep your P&L accurate at all times.' },
@@ -29,15 +69,27 @@ const steps = [
 export default function HomePage() {
   const { data: session } = useSession()
   const dashHref = session ? '/dashboard' : '/login'
+  const reduce = useReducedMotionMounted()
 
-  useEffect(() => {
-    const io = new IntersectionObserver(
-      entries => entries.forEach(e => e.isIntersecting && e.target.classList.add('visible')),
-      { threshold: 0.1 }
-    )
-    document.querySelectorAll('.rv').forEach(el => io.observe(el))
-    return () => io.disconnect()
-  }, [])
+  /* Hero depth: video plane drifts slowest, card plane faster, floating cards fastest */
+  const heroRef = useRef<HTMLElement>(null)
+  const { scrollYProgress: heroP } = useScroll({ target: heroRef, offset: ['start start', 'end start'] })
+  const vidScale = useTransform(heroP, [0, 1], [1, 1.15])
+  const vidY     = useTransform(heroP, [0, 1], [0, 80])
+  const textO    = useTransform(heroP, [0, 0.55], [1, 0])
+  const textY    = useTransform(heroP, [0, 1], [0, -60])
+  const cardY    = useTransform(heroP, [0, 1], [0, -90])
+  const fgY      = useTransform(heroP, [0, 1], [0, -70])
+
+  const ctaIn: Variants = reduce
+    ? {
+        hidden: { opacity: 0, clipPath: 'inset(0% 0% 0% 0% round 30px)' },
+        show:   { opacity: 1, clipPath: 'inset(0% 0% 0% 0% round 30px)', transition: { duration: 0.4, staggerChildren: 0.08 } },
+      }
+    : {
+        hidden: { clipPath: 'inset(0% 50% 0% 50% round 30px)' },
+        show:   { clipPath: 'inset(0% 0% 0% 0% round 30px)', transition: { duration: 0.9, ease, when: 'beforeChildren', staggerChildren: 0.08 } },
+      }
 
   return (
     <>
@@ -82,12 +134,31 @@ export default function HomePage() {
         .btn-solid { background: var(--green); color: #fff; }
         .btn-solid:hover { background: var(--green-deep); }
 
-        /* ─── Reveal animation ───────────────────────────────── */
-        .rv {
-          opacity: 0; transform: translateY(14px);
-          transition: opacity .6s var(--ease), transform .6s var(--ease);
+        /* ─── Scroll progress ────────────────────────────────── */
+        .scroll-progress {
+          position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 101;
+          background: var(--green); transform-origin: 0% 50%;
         }
-        .rv.visible { opacity: 1; transform: none; }
+
+        /* ─── Hero video plane ───────────────────────────────── */
+        .hero-sec { position: relative; overflow: hidden; isolation: isolate; background: var(--bg); }
+        .hero-sec .wrap { position: relative; }
+        .hero-vid {
+          position: absolute; inset: 0; width: 100%; height: 100%;
+          -webkit-mask-image: linear-gradient(90deg, rgba(0,0,0,.06) 0%, rgba(0,0,0,.1) 44%, #000 72%), linear-gradient(180deg, transparent 0%, #000 24%, #000 70%, transparent 100%);
+          -webkit-mask-composite: source-in;
+          mask-image: linear-gradient(90deg, rgba(0,0,0,.06) 0%, rgba(0,0,0,.1) 44%, #000 72%), linear-gradient(180deg, transparent 0%, #000 24%, #000 70%, transparent 100%);
+          mask-composite: intersect;
+        }
+        .hero-fg { position: absolute; inset: 0; pointer-events: none; }
+
+        /* ─── Zoom bridge (hero → stats) ─────────────────────── */
+        .zoom-bridge { position: relative; height: 320vh; }
+        .zoom-stage { position: sticky; top: 0; height: 100vh; overflow: hidden; }
+        .zoom-frame { position: absolute; inset: 0; background: var(--forest); will-change: clip-path; clip-path: inset(20% max(24px, calc(50% - 300px)) round 30px); }
+        .zoom-frame video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        .zoom-band-slot { position: absolute; left: 0; right: 0; top: 58%; transform: translateY(-50%); }
+        .zoom-band-slot .stats-band { margin-bottom: 0; }
 
         /* ─── Hero ───────────────────────────────────────────── */
         .hero {
@@ -172,9 +243,9 @@ export default function HomePage() {
         .mkt-card {
           background: var(--paper); border: 1px solid var(--line);
           border-radius: var(--r-xl); padding: 32px; box-shadow: var(--sh);
-          transition: box-shadow .25s var(--ease), transform .25s var(--ease);
+          transition: box-shadow .25s var(--ease);
         }
-        .mkt-card:hover { box-shadow: var(--sh-lg); transform: translateY(-3px); }
+        .mkt-card:hover { box-shadow: var(--sh-lg); }
         .mkt-flag { font-size: 2.2rem; margin-bottom: 16px; display: block; }
         .mkt-name { font-size: 1.1rem; font-weight: 700; color: var(--ink); margin-bottom: 8px; }
         .mkt-desc { font-size: .88rem; color: var(--muted); line-height: 1.55; margin-bottom: 22px; }
@@ -272,6 +343,12 @@ export default function HomePage() {
         @media (max-width: 960px) {
           .hero { grid-template-columns: 1fr; padding: 120px 0 60px; }
           .hero-right { display: none; }
+          .hero-vid {
+            opacity: .5;
+            -webkit-mask-image: linear-gradient(180deg, transparent 0%, transparent 76%, #000 90%, transparent 100%);
+            mask-image: linear-gradient(180deg, transparent 0%, transparent 76%, #000 90%, transparent 100%);
+          }
+          .zoom-bridge { height: 260vh; }
           .stats-band { grid-template-columns: repeat(2,1fr); padding: 32px; }
           .markets-grid { grid-template-columns: 1fr; max-width: 480px; }
           .how-grid { grid-template-columns: repeat(2,1fr); }
@@ -288,128 +365,132 @@ export default function HomePage() {
         }
       `}</style>
 
+      <ScrollProgress />
       <Nav />
 
       {/* ── Hero ────────────────────────────────────────────── */}
-      <section>
+      <section ref={heroRef} className="hero-sec">
+        <LoopVideo
+          name="hero" themed className="hero-vid"
+          style={reduce ? undefined : { scale: vidScale, y: vidY }}
+        />
         <div className="wrap">
           <div className="hero">
-            <div className="hero-left rv">
-              <p className="hero-eyebrow">Personal Investment Dashboard</p>
-              <h1 className="hero-headline">
-                Track every rupee,{' '}
-                <em>across every market</em>
-              </h1>
-              <p className="hero-sub">
-                A unified view of your Indian stocks, US equities, and crypto —
-                built for investors who want clarity without complexity.
-              </p>
-              <div className="hero-actions">
-                <a href={dashHref} className="btn btn-solid">
-                  {session ? 'Open Dashboard' : 'Sign in →'}
-                </a>
-                <a href="#markets" className="btn btn-ghost">Explore Markets</a>
-              </div>
-            </div>
-
-            <div className="hero-right rv" style={{ transitionDelay: '.15s', position: 'relative' }}>
-              <div className="hero-card">
-                <div className="hero-card-label">Portfolio Value</div>
-                <div className="hero-card-value">₹11,22,350</div>
-                <div className="hero-card-change">↑ +16.3% this year</div>
-                <HeroSparkline />
-                <div className="hero-card-footer">
-                  <span style={{ color: 'var(--muted)' }}>Indian Stocks</span>
-                  <span style={{ fontWeight: 600, color: 'var(--gain)' }}>+14.2%</span>
+            <motion.div className="hero-left" style={reduce ? undefined : { opacity: textO, y: textY }}>
+              <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease }}>
+                <p className="hero-eyebrow">Personal Investment Dashboard</p>
+                <h1 className="hero-headline">
+                  Track every rupee,{' '}
+                  <em>across every market</em>
+                </h1>
+                <p className="hero-sub">
+                  A unified view of your Indian stocks, US equities, and crypto —
+                  built for investors who want clarity without complexity.
+                </p>
+                <div className="hero-actions">
+                  <a href={dashHref} className="btn btn-solid">
+                    {session ? 'Open Dashboard' : 'Sign in →'}
+                  </a>
+                  <a href="#markets" className="btn btn-ghost">Explore Markets</a>
                 </div>
-              </div>
-              <div className="float-card float-card-a">
-                <div className="float-card-name">Bitcoin</div>
-                <div className="float-card-val">₹62,14,000</div>
-                <div className="float-card-ret up">+4.7%</div>
-              </div>
-              <div className="float-card float-card-b">
-                <div className="float-card-name">TCS</div>
-                <div className="float-card-val">₹3,880</div>
-                <div className="float-card-ret up">+2.1%</div>
-              </div>
-            </div>
+              </motion.div>
+            </motion.div>
+
+            <motion.div className="hero-right" style={reduce ? { position: 'relative' } : { position: 'relative', y: cardY }}>
+              <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.15, ease }}>
+                <div className="hero-card">
+                  <div className="hero-card-label">Portfolio Value</div>
+                  <div className="hero-card-value">₹11,22,350</div>
+                  <div className="hero-card-change">↑ +16.3% this year</div>
+                  <HeroSparkline />
+                  <div className="hero-card-footer">
+                    <span style={{ color: 'var(--muted)' }}>Indian Stocks</span>
+                    <span style={{ fontWeight: 600, color: 'var(--gain)' }}>+14.2%</span>
+                  </div>
+                </div>
+              </motion.div>
+              <motion.div
+                className="hero-fg"
+                style={reduce ? undefined : { y: fgY }}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.4, ease }}
+              >
+                <div className="float-card float-card-a">
+                  <div className="float-card-name">Bitcoin</div>
+                  <div className="float-card-val">₹62,14,000</div>
+                  <div className="float-card-ret up">+4.7%</div>
+                </div>
+                <div className="float-card float-card-b">
+                  <div className="float-card-name">TCS</div>
+                  <div className="float-card-val">₹3,880</div>
+                  <div className="float-card-ret up">+2.1%</div>
+                </div>
+              </motion.div>
+            </motion.div>
           </div>
         </div>
       </section>
 
-      {/* ── Stats band ──────────────────────────────────────── */}
-      <div className="wrap">
-        <div className="stats-band rv">
-          {[
-            { num: '500+', label: 'Trackable assets' },
-            { num: '3',    label: 'Markets covered' },
-            { num: '₹0',  label: 'Platform fees' },
-            { num: 'Live', label: 'Price updates' },
-          ].map(s => (
-            <div key={s.label} className="stat">
-              <div className="stat-num">{s.num}</div>
-              <div className="stat-label">{s.label}</div>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* ── Zoom bridge → Stats band ────────────────────────── */}
+      <ZoomBridge stats={stats} />
 
       {/* ── Markets ─────────────────────────────────────────── */}
       <section id="markets" className="markets">
         <div className="wrap">
-          <div className="sec-hd rv">
+          <motion.div className="sec-hd" variants={rise} {...inView}>
             <p className="sec-tag">Markets</p>
             <h2 className="sec-title">Everything under one roof</h2>
             <p className="sec-sub">
               Track indices, individual stocks, and coins — real-time data via
               CoinGecko and Yahoo Finance.
             </p>
-          </div>
-          <div className="markets-grid">
+          </motion.div>
+          <motion.div className="markets-grid" variants={group(0.08)} {...inView}>
             {markets.map(m => (
-              <div key={m.name} className="mkt-card rv" style={{ transitionDelay: m.delay }}>
+              <motion.div
+                key={m.name} className="mkt-card" variants={rise}
+                whileHover={{ y: -3, transition: { duration: 0.18, ease } }}
+              >
                 <span className="mkt-flag">{m.flag}</span>
                 <div className="mkt-name">{m.name}</div>
                 <div className="mkt-desc">{m.desc}</div>
                 <div className="mkt-tickers">
                   {m.tickers.map(t => <span key={t} className="mkt-tick">{t}</span>)}
                 </div>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
       {/* ── How it works ────────────────────────────────────── */}
       <section className="how">
         <div className="wrap">
-          <div className="sec-hd rv">
+          <motion.div className="sec-hd" variants={rise} {...inView}>
             <p className="sec-tag">How it works</p>
             <h2 className="sec-title">Simple by design</h2>
-          </div>
-          <div className="how-grid">
-            {steps.map((s, i) => (
-              <div key={s.n} className="how-card rv" style={{ transitionDelay: `${i * 0.08}s` }}>
+          </motion.div>
+          <motion.div className="how-grid" variants={group(0.08)} {...inView}>
+            {steps.map(s => (
+              <motion.div key={s.n} className="how-card" variants={slide}>
                 <div className="how-num">{s.n}</div>
                 <div className="how-title">{s.title}</div>
                 <div className="how-body">{s.body}</div>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
       {/* ── Features ────────────────────────────────────────── */}
       <section className="feat">
         <div className="wrap">
-          <div className="sec-hd rv">
+          <motion.div className="sec-hd" variants={rise} {...inView}>
             <p className="sec-tag">Features</p>
             <h2 className="sec-title">Built for serious tracking</h2>
-          </div>
-          <div className="feat-grid">
+          </motion.div>
+          <motion.div className="feat-grid" variants={group(0.06)} {...inView}>
             {/* lg card with FeatChart */}
-            <div className="feat-card lg rv">
+            <motion.div className="feat-card lg" variants={settle}>
               <div className="feat-icon">
                 <svg viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/>
@@ -420,9 +501,9 @@ export default function HomePage() {
                 Zoom, pan, and inspect historical performance across any timeframe — daily to all-time.
               </div>
               <FeatChart />
-            </div>
+            </motion.div>
 
-            <div className="feat-card sm rv" style={{ transitionDelay: '.08s' }}>
+            <motion.div className="feat-card sm" variants={settle}>
               <div className="feat-icon">
                 <svg viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round">
                   <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/>
@@ -432,9 +513,9 @@ export default function HomePage() {
               <div className="feat-body">
                 Sub-minute price refresh for stocks and crypto with visual flash indicators on every tick.
               </div>
-            </div>
+            </motion.div>
 
-            <div className="feat-card sm rv" style={{ transitionDelay: '.12s' }}>
+            <motion.div className="feat-card sm" variants={settle}>
               <div className="feat-icon">
                 <svg viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round">
                   <line x1="12" y1="1" x2="12" y2="23"/>
@@ -445,9 +526,9 @@ export default function HomePage() {
               <div className="feat-body">
                 All values shown in ₹ with lakhs and crores — never millions or billions.
               </div>
-            </div>
+            </motion.div>
 
-            <div className="feat-card sm rv" style={{ transitionDelay: '.16s' }}>
+            <motion.div className="feat-card sm" variants={settle}>
               <div className="feat-icon">
                 <svg viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round">
                   <rect x="3" y="3" width="7" height="7" rx="1"/>
@@ -460,9 +541,9 @@ export default function HomePage() {
               <div className="feat-body">
                 Indian stocks, US equities, and crypto on one screen — no tab-switching required.
               </div>
-            </div>
+            </motion.div>
 
-            <div className="feat-card sm rv" style={{ transitionDelay: '.2s' }}>
+            <motion.div className="feat-card sm" variants={settle}>
               <div className="feat-icon">
                 <svg viewBox="0 0 24 24" strokeWidth="2" strokeLinecap="round">
                   <circle cx="12" cy="12" r="5"/>
@@ -471,24 +552,24 @@ export default function HomePage() {
               </div>
               <div className="feat-title">Dark Mode</div>
               <div className="feat-body">
-                A forest-green dark theme that's easy on the eyes during late-night portfolio reviews.
+                A forest-green dark theme that&apos;s easy on the eyes during late-night portfolio reviews.
               </div>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         </div>
       </section>
 
       {/* ── Portfolio preview ────────────────────────────────── */}
       <section id="portfolio" className="port">
         <div className="wrap">
-          <div className="sec-hd rv">
+          <motion.div className="sec-hd" variants={rise} {...inView}>
             <p className="sec-tag">Portfolio</p>
             <h2 className="sec-title">Your holdings, ranked</h2>
             <p className="sec-sub">
               A clean table view of every position — sorted by value, updated live.
             </p>
-          </div>
-          <div className="port-table rv" style={{ transitionDelay: '.08s' }}>
+          </motion.div>
+          <motion.div className="port-table" variants={tableIn} {...inView}>
             <div className="port-head">
               <span>#</span>
               <span>Asset</span>
@@ -496,7 +577,7 @@ export default function HomePage() {
               <span style={{ textAlign: 'right' }}>Return</span>
             </div>
             {portfolio.map(row => (
-              <div key={row.rank} className="port-row">
+              <motion.div key={row.rank} className="port-row" variants={rowIn}>
                 <span className="port-rank">{row.rank}</span>
                 <div>
                   <div className="port-name">{row.name}</div>
@@ -504,28 +585,28 @@ export default function HomePage() {
                 </div>
                 <span className="port-val">{row.value}</span>
                 <span className={`port-ret ${row.gain ? 'gain' : 'loss'}`}>{row.ret}</span>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
       {/* ── CTA ─────────────────────────────────────────────── */}
-      <div className="wrap">
-        <div className="cta-section rv">
-          <h2 className="cta-title">Start tracking your wealth today</h2>
-          <p className="cta-sub">
+      <motion.div className="wrap" {...inView}>
+        <motion.div className="cta-section" variants={ctaIn}>
+          <motion.h2 className="cta-title" variants={rise}>Start tracking your wealth today</motion.h2>
+          <motion.p className="cta-sub" variants={rise}>
             Free to use. No spreadsheets. No subscription. Just a clear view of
             where your money is.
-          </p>
-          <div className="cta-actions">
+          </motion.p>
+          <motion.div className="cta-actions" variants={rise}>
             <a href={dashHref} className="btn btn-white">
                   {session ? 'Open Dashboard' : 'Sign in'}
                 </a>
             <a href="#markets" className="btn btn-outline-white">Explore Markets</a>
-          </div>
-        </div>
-      </div>
+          </motion.div>
+        </motion.div>
+      </motion.div>
 
       {/* ── Footer ──────────────────────────────────────────── */}
       <footer className="footer">

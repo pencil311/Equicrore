@@ -4,7 +4,7 @@ import { localDateISO } from '@/lib/format'
 import { useDash } from '@/lib/dashContext'
 import { type WatchSymbol } from '@/lib/watchlists'
 import { findWatchSymbol } from '@/lib/symbolMap'
-import { useLivePrices } from '@/hooks/useLivePrices'
+import { useLivePrices, livePriceFor } from '@/hooks/useLivePrices'
 import { type Theme } from '@/hooks/useTheme'
 import { PLChartsPanel, FullscreenChart } from '@/components/dashboard/PLCharts'
 
@@ -25,7 +25,7 @@ function readOpenPositions(): OpenPosition[] {
 export default function ChartsPage() {
   /* Trade records come from the dashboard context — already broker-aware and
      kept in sync with the 'eq-record-added' / storage events. */
-  const { txns: records, liveHoldings } = useDash()
+  const { txns: records, holdings, prices } = useDash()
 
   const [openPositions, setOpenPositions]       = useState<OpenPosition[]>([])
   const [fullscreenSymbol, setFullscreenSymbol] = useState<WatchSymbol | null>(null)
@@ -55,10 +55,15 @@ export default function ChartsPage() {
     }, 0)
   ), [openPositions, livePrices])
 
-  /* Mark-to-market on portfolio holdings — liveHoldings already carries live prices */
+  /* Mark-to-market on portfolio holdings. Only holdings with a comparable live quote
+     count: a holding's fallback price is just its last recorded trade price, which
+     would report a fake gain or loss. */
   const holdingsUnrealised = useMemo(
-    () => liveHoldings.reduce((s, h) => s + h.qty * (h.price - h.avg), 0),
-    [liveHoldings]
+    () => holdings.reduce((s, h) => {
+      const lp = livePriceFor(h, prices)
+      return lp == null ? s : s + h.qty * (lp - h.avg)
+    }, 0),
+    [holdings, prices]
   )
 
   /* Today's account-wide realised P&L — same source & date basis as the dashboard stat */

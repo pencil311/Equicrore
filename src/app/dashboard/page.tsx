@@ -1,7 +1,9 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { Ico } from '@/components/dashboard/DashLayout'
-import { StatCard, PerfPanel, AllocationPanel, HoldingsPanel, TransactionsPanel, PerformanceSummaryPanel } from '@/components/dashboard/DashPanels'
+import { motion } from 'motion/react'
+import { StatCard, PerfPanel, AllocationPanel, HoldingsPanel, TransactionsPanel, PerformanceSummaryPanel, dashItem, dashGroup } from '@/components/dashboard/DashPanels'
+import LoopVideo from '@/components/motion/LoopVideo'
 import { useDash } from '@/lib/dashContext'
 import { pct, inr } from '@/lib/format'
 import { BROKERS, type Broker, type BrokerId } from '@/lib/brokers'
@@ -162,7 +164,9 @@ export default function DashboardPage() {
   }, [activeBroker])
 
   return (
-    <div key={fadeKey} className="content fade">
+    <motion.div key={fadeKey} className="content" initial="hidden" animate="show" variants={dashGroup(0.06)}>
+      <motion.div className="dash-hero" variants={dashItem}>
+      <LoopVideo name="dash" themed className="dash-hero-vid" />
       <div className="page-head" style={{ alignItems: 'center' }}>
         <div>
           <div className="crumb">Dashboard <span>·</span> <b>Personal Portfolio</b></div>
@@ -187,25 +191,26 @@ export default function DashboardPage() {
           <Ico d={I.plus} s={16} /> New record
         </button>
       </div>
+      </motion.div>
 
-      <div className="stats">
+      <motion.div className="stats" variants={dashGroup(0.04)}>
         <StatCard icon={I.spark}  k="Today's P/L"     value={Math.abs(todayPL)} change={pct(Math.abs(todayPct))} changeUp={todayPL >= 0} />
         <StatCard icon={I.chart}  k="Total returns"   value={totalPL}        change={pct(totalPLpct)} changeUp={totalPL >= 0} />
         <StatCard icon={I.bag}    k="Portfolio value" value={portfolioValue} change={pct(totalPLpct)} changeUp={totalPL >= 0} sub="all-time" />
         <StatCard icon={I.wallet} k="Cash available"  value={cash} sub="ready to invest" />
-      </div>
+      </motion.div>
 
-      <div className="grid-2">
+      <motion.div className="grid-2" variants={dashGroup(0.05)}>
         <PerformanceSummaryPanel />
         <HoldingsPanel holdings={liveHoldings} onTrade={openTrade} />
-      </div>
+      </motion.div>
 
-      <div className="grid-2">
+      <motion.div className="grid-2" variants={dashGroup(0.05)}>
         <PerfPanel portfolioValue={portfolioValue} records={txns} />
         <AllocationPanel holdings={liveHoldings} cash={cash} portfolioValue={portfolioValue} />
-      </div>
+      </motion.div>
 
       <TransactionsPanel txns={txns} />
-    </div>
+    </motion.div>
   )
 }

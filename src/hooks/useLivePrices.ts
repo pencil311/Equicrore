@@ -57,14 +57,28 @@ export function mergeWatchlist(items: WatchlistItem[], prices: Record<string, Li
   })
 }
 
+/* F&O and MCX holdings are recorded at contract/premium prices, but the feed only
+   quotes the underlying (NIFTY options → index points, MCX crude → global crude),
+   so a live quote for them is in the wrong unit and must not be applied. */
+const NO_LIVE_TYPES = new Set(['FNO', 'Commodities'])
+
+/** A live price comparable to the holding's own price, or null if there is none. */
+export function livePriceFor(
+  item: { sym: string; type?: string },
+  prices: Record<string, LivePrice>,
+): number | null {
+  if (item.type && NO_LIVE_TYPES.has(item.type)) return null
+  const p = prices[item.sym]
+  return p && p.price > 0 ? p.price : null
+}
+
 /** Merge live prices into holdings (generic so it works with any holding shape) */
-export function mergeHoldings<T extends { sym: string; price: number }>(
+export function mergeHoldings<T extends { sym: string; price: number; type?: string }>(
   items: T[],
   prices: Record<string, LivePrice>,
 ): T[] {
   return items.map(item => {
-    const p = prices[item.sym]
-    if (!p || p.price === 0) return item
-    return { ...item, price: p.price }
+    const lp = livePriceFor(item, prices)
+    return lp == null ? item : { ...item, price: lp }
   })
 }

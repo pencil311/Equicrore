@@ -1,5 +1,6 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { motion, useInView, type Variants } from 'motion/react'
 import AreaChart from '@/components/charts/AreaChart'
 import Donut from '@/components/charts/Donut'
 import { useCountUp } from '@/hooks/useCountUp'
@@ -34,10 +35,19 @@ interface StatCardProps {
   sub?: string
 }
 
+/* Quick, functional entrance. Items only animate under a parent that sets initial/animate. */
+export const dashItem: Variants = {
+  hidden: { opacity: 0, y: 10 },
+  show:   { opacity: 1, y: 0, transition: { duration: 0.32, ease: [0.23, 1, 0.32, 1] } },
+}
+export const dashGroup = (stagger = 0.05): Variants => ({ show: { transition: { staggerChildren: stagger } } })
+
 export function StatCard({ icon, k, value, dec = 0, isCur = true, change, changeUp, sub }: StatCardProps) {
-  const v = useCountUp(value, 1200)
+  const ref = useRef<HTMLDivElement>(null)
+  const seen = useInView(ref, { once: true, amount: 0.5 })
+  const v = useCountUp(seen ? value : 0, 1200)
   return (
-    <div className="scard">
+    <motion.div ref={ref} className="scard" variants={dashItem}>
       <div className="k">
         <span className="si"><Ico d={icon} s={16} /></span>
         {k}
@@ -52,7 +62,7 @@ export function StatCard({ icon, k, value, dec = 0, isCur = true, change, change
           {sub && <span className="muted" style={{ fontWeight: 500 }}>{sub}</span>}
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }
 
@@ -94,7 +104,7 @@ export function PerfPanel({ portfolioValue, records }: PerfPanelProps) {
   const up = periodPL >= 0
 
   return (
-    <div className="panel">
+    <motion.div className="panel" variants={dashItem}>
       <div className="panel-head">
         <div>
           <h3>Portfolio performance</h3>
@@ -113,7 +123,7 @@ export function PerfPanel({ portfolioValue, records }: PerfPanelProps) {
         </div>
       </div>
       <AreaChart data={s.data} labels={s.labels} key={tf} />
-    </div>
+    </motion.div>
   )
 }
 
@@ -138,7 +148,7 @@ export function AllocationPanel({ holdings, cash, portfolioValue }: AllocationPa
   const total = segs.reduce((s, x) => s + x.value, 0)
 
   return (
-    <div className="panel">
+    <motion.div className="panel" variants={dashItem}>
       <div className="panel-head"><h3>Allocation</h3></div>
       <div className="donut-wrap">
         <div style={{ position: 'relative' }}>
@@ -158,7 +168,7 @@ export function AllocationPanel({ holdings, cash, portfolioValue }: AllocationPa
           ))}
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -170,7 +180,7 @@ interface HoldingsPanelProps {
 
 export function HoldingsPanel({ holdings, onTrade }: HoldingsPanelProps) {
   return (
-    <div className="panel">
+    <motion.div className="panel" variants={dashItem}>
       <div className="panel-head">
         <h3>Your holdings</h3>
         <span className="sub">{holdings.length} positions</span>
@@ -207,7 +217,7 @@ export function HoldingsPanel({ holdings, onTrade }: HoldingsPanelProps) {
           )
         })}
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -257,7 +267,7 @@ function fmtDate(iso: string) {
 
 export function TransactionsPanel({ txns }: { txns: TradeRecord[] }) {
   return (
-    <div className="panel">
+    <motion.div className="panel" variants={dashItem}>
       <div className="panel-head">
         <h3>Recent activity</h3>
         <a className="muted" style={{ fontWeight: 600, cursor: 'pointer', fontSize: 13 }}>View all</a>
@@ -282,7 +292,7 @@ export function TransactionsPanel({ txns }: { txns: TradeRecord[] }) {
           </div>
         ))}
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -291,7 +301,7 @@ export function PerformanceSummaryPanel() {
   const lb = leaderboard
   const you = lb.find(x => x.you)!
   return (
-    <div className="panel">
+    <motion.div className="panel" variants={dashItem}>
       <div className="panel-head">
         <h3>Performance summary</h3>
         <span className="sub">vs. benchmarks</span>
@@ -322,7 +332,7 @@ export function PerformanceSummaryPanel() {
           </div>
         ))}
       </div>
-    </div>
+    </motion.div>
   )
 }
 
